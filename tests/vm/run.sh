@@ -1,16 +1,25 @@
 #!/bin/sh
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-test -f "$root/out/vm/Image"
-test -f "$root/out/android16-6.12-ns/droidspaces_ns.ko"
+kernel=${DS_VM_KERNEL:-/work/out/vm/Image}
+module=${DS_VM_MODULE:-/work/out/android16-6.12-ns/droidspaces_ns.ko}
+log_dir=${DS_VM_LOG_DIR:-out/vm}
+case "$log_dir" in out/*) ;; *) echo 'DS_VM_LOG_DIR must be under out/' >&2; exit 1;; esac
+case "$log_dir" in *..*) echo 'Invalid log directory' >&2; exit 1;; esac
+test -f "$root/${kernel#/work/}"
+test -f "$root/${module#/work/}"
+mkdir -p "$root/$log_dir"
 vm_status=0
 docker run --rm --platform linux/arm64 -v "$root:/work" \
-    -e DS_VM_KERNEL="${DS_VM_KERNEL:-/work/out/vm/Image}" \
-    -e DS_VM_MODULE="${DS_VM_MODULE:-/work/out/android16-6.12-ns/droidspaces_ns.ko}" \
+    -e DS_VM_KERNEL="$kernel" \
+    -e DS_VM_MODULE="$module" \
+    -e DS_VM_LOG_DIR="/work/$log_dir" \
+    -e DS_TEST_PIDFD_NS_IOCTL="${DS_TEST_PIDFD_NS_IOCTL:-1}" \
+    -e DS_TEST_SHM_HUGETLB_REJECT="${DS_TEST_SHM_HUGETLB_REJECT:-0}" \
     droidspaces-lkm-vm:local sh -eu -c '
     gcc -static -O2 -Wall -Wextra -Werror /work/tests/vm/load-module.c -o /tmp/load-module
-    gcc -static -O2 -Wall -Wextra -Werror /work/tests/vm/namespaces.c -o /tmp/namespaces
-    gcc -static -O2 -Wall -Wextra -Werror /work/tests/vm/ipc.c -o /tmp/ipc-test
+    gcc -static -O2 -Wall -Wextra -Werror -DDS_TEST_PIDFD_NS_IOCTL="$DS_TEST_PIDFD_NS_IOCTL" /work/tests/vm/namespaces.c -o /tmp/namespaces
+    gcc -static -O2 -Wall -Wextra -Werror -DDS_TEST_SHM_HUGETLB_REJECT="$DS_TEST_SHM_HUGETLB_REJECT" /work/tests/vm/ipc.c -o /tmp/ipc-test
     gcc -static -O2 -Wall -Wextra -Werror /work/tests/vm/mqueue.c -lrt -o /tmp/mqueue-test
     gcc -static -O2 -Wall -Wextra -Werror /work/tests/vm/pid-lifetimes.c -o /tmp/pid-lifetimes
     gcc -static -O2 -Wall -Wextra -Werror /work/tests/vm/pid-policy.c -o /tmp/pid-policy
@@ -36,12 +45,12 @@ docker run --rm --platform linux/arm64 -v "$root:/work" \
         -nographic -monitor none -nic none -no-reboot \
         -kernel "$DS_VM_KERNEL" -initrd /tmp/initramfs \
         -append "console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init nokaslr selinux=0 panic=-1" \
-        > /work/out/vm/console.log 2>&1
+        > "$DS_VM_LOG_DIR/console.log" 2>&1
     ' || vm_status=$?
-cat "$root/out/vm/console.log"
+cat "$root/$log_dir/console.log"
 test "$vm_status" -eq 0
-grep -q '^DS_VM_RESULT=0' "$root/out/vm/console.log"
-if grep -Eq 'BUG:|WARNING:|Oops|Kernel panic' "$root/out/vm/console.log"; then
+grep -q '^DS_VM_RESULT=0' "$root/$log_dir/console.log"
+if grep -Eq 'BUG:|WARNING:|Oops|Kernel panic' "$root/$log_dir/console.log"; then
     echo 'Kernel diagnostics found in VM log' >&2
     exit 1
 fi

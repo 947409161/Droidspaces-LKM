@@ -1,22 +1,23 @@
 ifneq ($(KERNELRELEASE),)
 include $(src)/vendor/kallrecon/deps.mk
 ifeq ($(TARGET),namespace)
+PORT_DIR ?= src/port
 obj-m := droidspaces_ns.o
 droidspaces_ns-y := \
-	src/port/main.o src/port/pid.o src/port/ipc.o \
-	src/port/nsproxy.o src/port/pid_alloc.o src/port/exit.o \
-	src/port/proc_ns.o src/port/proc_root.o src/port/hooks.o \
-	src/port/selftest.o src/port/msg.o src/port/msgutil.o \
-	src/port/sem.o src/port/shm.o src/port/ipc-util.o \
-	src/port/ipc-task.o src/port/ipc-compat.o src/port/mqueue.o \
-	src/port/mq_sysctl.o src/port/ipc_sysctl.o src/port/fork.o src/port/pidfd.o src/port/reboot.o \
-	src/port/fuse.o src/port/cgroup-pidlist.o src/port/bpf-pidns.o \
-	src/port/perf.o src/port/perf-original.o src/port/memfd.o \
+	$(PORT_DIR)/main.o $(PORT_DIR)/pid.o $(PORT_DIR)/ipc.o \
+	$(PORT_DIR)/nsproxy.o $(PORT_DIR)/pid_alloc.o $(PORT_DIR)/exit.o \
+	$(PORT_DIR)/proc_ns.o $(PORT_DIR)/proc_root.o $(PORT_DIR)/hooks.o \
+	$(PORT_DIR)/selftest.o $(PORT_DIR)/msg.o $(PORT_DIR)/msgutil.o \
+	$(PORT_DIR)/sem.o $(PORT_DIR)/shm.o $(PORT_DIR)/ipc-util.o \
+	$(PORT_DIR)/ipc-task.o $(PORT_DIR)/ipc-compat.o $(PORT_DIR)/mqueue.o \
+	$(PORT_DIR)/mq_sysctl.o $(PORT_DIR)/ipc_sysctl.o $(PORT_DIR)/fork.o $(if $(filter src/port,$(PORT_DIR)),$(PORT_DIR)/pidfd.o) $(PORT_DIR)/reboot.o \
+	$(PORT_DIR)/fuse.o $(PORT_DIR)/cgroup-pidlist.o $(PORT_DIR)/bpf-pidns.o \
+	$(PORT_DIR)/perf.o $(PORT_DIR)/perf-original.o $(PORT_DIR)/memfd.o \
 	$(addprefix vendor/kallrecon/,$(DEPS_LIB_OBJS))
 # Do not enable CONFIG_SYSVIPC: that would change the host task_struct layout.
 ccflags-y += -DCONFIG_PID_NS=1 -DCONFIG_IPC_NS=1 -DCONFIG_POSIX_MQUEUE=1
 ccflags-y += -DCONFIG_POSIX_MQUEUE_SYSCTL=1 -DCONFIG_SYSVIPC_SYSCTL=1
-ccflags-y += -include $(src)/src/port/names.h
+ccflags-y += -include $(src)/$(PORT_DIR)/names.h
 ccflags-y += -I$(srctree)/fs/proc -I$(srctree)/fs -I$(srctree)
 else
 obj-m := droidspaces_probe.o

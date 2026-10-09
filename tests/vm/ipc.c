@@ -62,6 +62,10 @@ int main(void)
 	char *memory;
 	pid_t child;
 	CHECK(unshare(CLONE_NEWIPC) == 0);
+#if DS_TEST_SHM_HUGETLB_REJECT
+	CHECK(shmget(IPC_PRIVATE, 2 * 1024 * 1024,
+		     IPC_CREAT | 0600 | SHM_HUGETLB) == -1 && errno == EOPNOTSUPP);
+#endif
 	int own_ns = open("/proc/self/ns/ipc", O_RDONLY | O_CLOEXEC);
 	CHECK(own_ns >= 0);
 	queue = msgget(key, IPC_CREAT | IPC_EXCL | 0600);

@@ -18,6 +18,10 @@
 #include <linux/reboot.h>
 #include <unistd.h>
 
+#ifndef DS_TEST_PIDFD_NS_IOCTL
+#define DS_TEST_PIDFD_NS_IOCTL 1
+#endif
+
 #define CHECK(expr) do { if (!(expr)) { \
 	dprintf(2, "FAIL line %d: %s (errno=%d)\n", __LINE__, #expr, errno); \
 	_exit(1); } } while (0)
@@ -121,6 +125,7 @@ int main(void)
 			    CLONE_NEWPID | CLONE_NEWIPC | SIGCHLD, NULL);
 	CHECK(child >= 0);
 	reap(child);
+#if DS_TEST_PIDFD_NS_IOCTL
 	/* pidfd ioctl obtains real nsfs references, including the host IPC fallback. */
 	int self_pidfd = syscall(SYS_pidfd_open, getpid(), 0);
 	CHECK(self_pidfd >= 0);
@@ -132,6 +137,9 @@ int main(void)
 		CHECK(close(nsfd) == 0);
 	}
 	CHECK(close(self_pidfd) == 0);
+#else
+	puts("DS_NAMESPACES_SKIP: pidfd namespace ioctl is not a native 6.6 interface");
+#endif
 	unsigned commands[] = { LINUX_REBOOT_CMD_RESTART, LINUX_REBOOT_CMD_RESTART2,
 		LINUX_REBOOT_CMD_HALT, LINUX_REBOOT_CMD_POWER_OFF };
 	for (unsigned i = 0; i < sizeof(commands) / sizeof(commands[0]); i++) {

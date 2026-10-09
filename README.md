@@ -124,6 +124,12 @@ v0.1.0 固定使用已在真机验证的二进制，SHA-256 为：
 [`src/port/ORIGIN`](src/port/ORIGIN)。默认 `./scripts/build-ddk.sh` 构建只探测的
 `droidspaces_probe.ko`。
 
+## 独立 6.6 实验构建
+
+Android 15 / Linux 6.6 GKI 的移植位于 `src/port66/`，使用独立 DDK 和输出目录。
+该构建仅面向匹配的 QEMU 测试内核，尚未验证 6.6 真机。构建命令、测试结果与限制见
+[`docs/android15-6.6.md`](docs/android15-6.6.md)。上述设备支持及下载说明仍指 6.12 版本。
+
 ## 验证
 
 已在 DDK 内核、目标设备提取的实际内核 Image（QEMU）和目标 Android 设备上验证：
