@@ -77,6 +77,9 @@
 #include <asm/mmu_context.h>
 #include <trace/hooks/mm.h>
 
+/* The PLC110 kernel disables CONFIG_PROC_EVENTS; the DDK enables it. */
+void (*ds_proc_exit_connector)(struct task_struct *task);
+
 static void __unhash_process(struct task_struct *p, bool group_dead)
 {
 	nr_threads--;
@@ -854,7 +857,8 @@ void __noreturn do_exit(long code)
 
 	exit_tasks_rcu_start();
 	exit_notify(tsk, group_dead);
-	proc_exit_connector(tsk);
+	if (ds_proc_exit_connector)
+		ds_proc_exit_connector(tsk);
 	mpol_put_task_policy(tsk);
 #ifdef CONFIG_FUTEX
 	if (unlikely(current->pi_state_cache))

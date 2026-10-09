@@ -39,7 +39,8 @@ GKI 的模块接口兼容性不覆盖这些依赖。
 测试日志为 `out/vm-6.6/console.log`。QEMU 使用匹配的 DDK 内核、2 个 vCPU、
 2 GiB 内存和无网络、无磁盘的 initramfs，SELinux 关闭。
 
-模块要求 Device Tree compatible 为 `linux,dummy-virt`，且完整 release 与上述基线相同，
+模块要求 Device Tree compatible 为 `linux,dummy-virt`，且完整 release 匹配已记录的
+测试内核（上述 DDK 基线或下文 PLC110 boot image），
 否则在符号解析和入口修改前返回 `EOPNOTSUPP`。默认加载执行可卸载的核心自测；
 `activate=1` 接入 namespace 路径后持续驻留到重启。
 
@@ -77,6 +78,12 @@ CFI 检查通过。这些检查不证明其他构建或未覆盖路径兼容。
 
 共享构建和测试入口修改后，6.12 版本重新编译及 QEMU 回归测试同样通过；
 已有 v0.1.0 发布二进制的 SHA-256 保持不变。
+
+## PLC110 实际内核离线验证
+
+另使用用户提供的 `6.6.118-android15-8` boot image 进行 QEMU 验证，
+并适配其未启用进程事件 connector 的配置差异。输入哈希、结果及复现命令见
+[PLC110 验证记录](plc110-6.6-vm.md)。仍未开放真机加载。
 
 ## 限制与后续设备适配
 

@@ -42,4 +42,6 @@ Adaptations:
   because native fuse_conn_put is inlined into fuse_dev_free/fuse_mount_destroy.
 - 6.6 vendor exit hook declaration and mutable ctl_table handler signatures retained.
 - SHM_HUGETLB is rejected: CONFIG_SYSVIPC=n native MM uses a false inline SHM hugepage predicate.
+- PLC110 6.6.118 boot image adds a second QEMU target; see docs/plc110-6.6-vm.md.
+- proc_exit_connector is resolved dynamically because CONFIG_PROC_EVENTS differs.
 - No device activation, KernelSU package or release promotion for this experimental build.

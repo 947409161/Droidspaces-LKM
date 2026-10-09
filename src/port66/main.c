@@ -8,6 +8,8 @@
 #include "port.h"
 #include "ipc-backend.h"
 
+extern void (*ds_proc_exit_connector)(struct task_struct *task);
+
 static bool activate;
 module_param(activate, bool, 0400);
 MODULE_PARM_DESC(activate, "Install experimental hooks on the matching Android 15 / 6.6 QEMU kernel");
@@ -33,7 +35,9 @@ static int __init ds_port_init(void)
 
 	/* Internal ABI and entry replacements are validated only on this VM. */
 	if (!of_machine_is_compatible("linux,dummy-virt") ||
-	    strcmp(utsname()->release, "6.6.127-4k-g46a034eca005-dirty")) {
+	    (strcmp(utsname()->release, "6.6.127-4k-g46a034eca005-dirty") &&
+	     strcmp(utsname()->release,
+		    "6.6.118-android15-8-ge58033dc8ea6-abogki498046332-4k"))) {
 		pr_err("android15-6.6 prototype is restricted to its matching QEMU kernel\n");
 		return -EOPNOTSUPP;
 	}
@@ -51,6 +55,10 @@ static int __init ds_port_init(void)
 		pr_err("this prototype requires native PID/IPC namespaces to be absent\n");
 		return -EOPNOTSUPP;
 	}
+	ds_proc_exit_connector = (void *)kallsyms_name_to_addr("proc_exit_connector");
+	if (!ds_proc_exit_connector &&
+	    !strcmp(utsname()->release, "6.6.127-4k-g46a034eca005-dirty"))
+		return -ENOENT;
 	ret = ds_hooks_prepare();
 	if (ret)
 		return ret;
