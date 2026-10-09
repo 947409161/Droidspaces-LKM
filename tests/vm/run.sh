@@ -14,6 +14,11 @@ docker run --rm --platform linux/arm64 -v "$root:/work" \
     -e DS_VM_KERNEL="$kernel" \
     -e DS_VM_MODULE="$module" \
     -e DS_VM_LOG_DIR="/work/$log_dir" \
+    -e DS_VM_NATIVE_IPC="${DS_VM_NATIVE_IPC:-0}" \
+    -e DS_VM_GKI_DIR="${DS_VM_GKI_DIR:-}" \
+    -e DS_TEST_618_INTERFACES="${DS_TEST_618_INTERFACES:-0}" \
+    -e DS_TEST_BPF_ITER="${DS_TEST_BPF_ITER:-1}" \
+    -e DS_TEST_MEMFD_POLICY="${DS_TEST_MEMFD_POLICY:-1}" \
     -e DS_VM_MODULE_PARAMS="${DS_VM_MODULE_PARAMS:-}" \
     -e DS_TEST_PIDFD_NS_IOCTL="${DS_TEST_PIDFD_NS_IOCTL:-1}" \
     -e DS_TEST_SHM_HUGETLB_REJECT="${DS_TEST_SHM_HUGETLB_REJECT:-0}" \
@@ -22,8 +27,9 @@ docker run --rm --platform linux/arm64 -v "$root:/work" \
     gcc -static -O2 -Wall -Wextra -Werror -DDS_TEST_PIDFD_NS_IOCTL="$DS_TEST_PIDFD_NS_IOCTL" /work/tests/vm/namespaces.c -o /tmp/namespaces
     gcc -static -O2 -Wall -Wextra -Werror -DDS_TEST_SHM_HUGETLB_REJECT="$DS_TEST_SHM_HUGETLB_REJECT" /work/tests/vm/ipc.c -o /tmp/ipc-test
     gcc -static -O2 -Wall -Wextra -Werror /work/tests/vm/mqueue.c -lrt -o /tmp/mqueue-test
-    gcc -static -O2 -Wall -Wextra -Werror /work/tests/vm/pid-lifetimes.c -o /tmp/pid-lifetimes
+    gcc -static -O2 -Wall -Wextra -Werror -DDS_TEST_BPF_ITER="$DS_TEST_BPF_ITER" /work/tests/vm/pid-lifetimes.c -o /tmp/pid-lifetimes
     gcc -static -O2 -Wall -Wextra -Werror /work/tests/vm/pid-policy.c -o /tmp/pid-policy
+    gcc -static -O2 -Wall -Wextra -Werror /work/tests/vm/preexisting-ipc.c -lrt -o /tmp/preexisting-ipc
     mkdir -p /tmp/root/bin /tmp/root/dev /tmp/root/proc /tmp/root/sys
     cp /usr/bin/busybox /tmp/root/bin/busybox
     for app in $(busybox --list); do
@@ -35,7 +41,20 @@ docker run --rm --platform linux/arm64 -v "$root:/work" \
     cp /tmp/mqueue-test /tmp/root/mqueue-test
     cp /tmp/pid-lifetimes /tmp/root/pid-lifetimes
     cp /tmp/pid-policy /tmp/root/pid-policy
+    cp /tmp/preexisting-ipc /tmp/root/preexisting-ipc
+    if [ "$DS_TEST_618_INTERFACES" = 1 ]; then
+        gcc -static -O2 -Wall -Wextra -Werror /work/tests/vm/namespaces-6.18.c -o /tmp/root/namespaces-6.18
+    fi
+    if [ -n "$DS_VM_GKI_DIR" ]; then
+        mkdir -p /tmp/root/gki/bin /tmp/root/gki/kernel
+        cp /work/kernelsu/common.sh /tmp/root/gki/common.sh
+        cp /work/out/gki/bin/abi-check /tmp/root/gki/bin/abi-check
+        cp "$DS_VM_GKI_DIR/$(basename "$DS_VM_GKI_DIR").abi" /tmp/root/gki/kernel/profile.abi
+        cp "$DS_VM_GKI_DIR/kernel.notes" /tmp/root/gki/kernel/kernel.notes
+    fi
     printf "%s\n" "$DS_VM_MODULE_PARAMS" > /tmp/root/module-params
+    if [ "$DS_VM_NATIVE_IPC" = 1 ]; then touch /tmp/root/native-ipc; fi
+    if [ "$DS_TEST_MEMFD_POLICY" = 0 ]; then touch /tmp/root/no-memfd-policy; fi
     cp /work/tests/vm/init /tmp/root/init
     chmod +x /tmp/root/init
     cp "$DS_VM_MODULE" /tmp/root/droidspaces_ns.ko

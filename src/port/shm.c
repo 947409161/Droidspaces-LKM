@@ -706,6 +706,11 @@ static int newseg(struct ipc_namespace *ns, struct ipc_params *params)
 	char name[13];
 	vm_flags_t acctflag = 0;
 
+#ifdef DS_GKI_ANDROID
+	/* CONFIG_SYSVIPC=n removes the host MM's hugepage SHM detection. */
+	if (shmflg & SHM_HUGETLB)
+		return -EOPNOTSUPP;
+#endif
 	state = ds_ipc_task_get_current();
 	if (!state)
 		return -ENOMEM;

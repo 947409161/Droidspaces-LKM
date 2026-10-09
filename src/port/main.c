@@ -7,6 +7,7 @@
 #include "hint.h"
 #include "port.h"
 #include "ipc-backend.h"
+#include "../gki-target.h"
 
 static bool activate;
 module_param(activate, bool, 0400);
@@ -28,12 +29,20 @@ module_param_cb(ipc_tasks, &live_count_ops, &ds_ipc_task_live, 0400);
 static int __init ds_port_init(void)
 {
 	struct kallrecon_hint hint = { .timeout_ms = 5000 };
+#ifndef DS_GKI_ANDROID
 	bool vm = of_machine_is_compatible("linux,dummy-virt");
 	bool device_kernel = !strcmp(utsname()->release,
 		"6.12.69-android16-6-g242e1a07f878-ab15865446-4k");
 	bool device = device_kernel && of_machine_is_compatible("qcom,canoe");
+#endif
 	int ret;
 
+#ifdef DS_GKI_ANDROID
+	if (!ds_gki_target_supported()) {
+		pr_err("requires matching " DS_GKI_ANDROID "-" DS_GKI_VERSION " with gki=1 or the build VM\n");
+		return -EOPNOTSUPP;
+	}
+#else
 	if (strncmp(utsname()->release, "6.12.", 5))
 		return -EOPNOTSUPP;
 	if ((!device_kernel && (!vm || strcmp(utsname()->release,
@@ -41,6 +50,7 @@ static int __init ds_port_init(void)
 		pr_err("this build supports only the recorded canoe device and QEMU kernels\n");
 		return -EOPNOTSUPP;
 	}
+#endif
 	ret = kallrecon_supply(&hint);
 	if (ret)
 		return ret;

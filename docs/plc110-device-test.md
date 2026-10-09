@@ -74,7 +74,9 @@ cat /sys/module/droidspaces_ns/parameters/ipc_live
 ## 验证与限制
 
 最终测试版带 `plc110_test=1` 在同一原始 6.6.118 Image 上通过完整 QEMU 回归，
-PID/IPC/task 计数全部归零，日志无内核告警。
+PID/IPC/task 计数全部归零，未出现内核崩溃或 WARN 回溯。
+加载日志包含外部模块 taint、`module_layout` 缺少版本信息及模块 BTF 不匹配提示；
+这些提示未阻止本次 QEMU 加载与功能测试，不能据此宣称真机已验证。
 脚本的型号、版本、BTF、校验失败、重复加载、加载错误及成功路径有隔离测试。
 真机加载条件已开放，但 QEMU 不能证明设备驱动、调度扩展、SELinux 域和长期负载安全。
 仍不支持 32 位 IPC 和 `SHM_HUGETLB`，不提供 6.6 缺失的 pidfd namespace ioctl。

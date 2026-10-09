@@ -138,7 +138,7 @@ int main(void)
 	}
 	CHECK(close(self_pidfd) == 0);
 #else
-	puts("DS_NAMESPACES_SKIP: pidfd namespace ioctl is not a native 6.6 interface");
+	puts("DS_NAMESPACES_SKIP: pidfd namespace ioctl is not provided by this baseline");
 #endif
 	unsigned commands[] = { LINUX_REBOOT_CMD_RESTART, LINUX_REBOOT_CMD_RESTART2,
 		LINUX_REBOOT_CMD_HALT, LINUX_REBOOT_CMD_POWER_OFF };

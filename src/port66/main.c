@@ -7,6 +7,7 @@
 #include "hint.h"
 #include "port.h"
 #include "ipc-backend.h"
+#include "../gki-target.h"
 
 extern void (*ds_proc_exit_connector)(struct task_struct *task);
 
@@ -35,11 +36,19 @@ static int __init ds_port_init(void)
 {
 	/* TCG discovery can exceed five seconds under host CPU contention. */
 	struct kallrecon_hint hint = { .timeout_ms = 15000 };
+#ifndef DS_GKI_ANDROID
 	bool vm = of_machine_is_compatible("linux,dummy-virt");
 	bool plc110_kernel = !strcmp(utsname()->release,
 		"6.6.118-android15-8-ge58033dc8ea6-abogki498046332-4k");
+#endif
 	int ret;
 
+#ifdef DS_GKI_ANDROID
+	if (!ds_gki_target_supported()) {
+		pr_err("requires matching " DS_GKI_ANDROID "-" DS_GKI_VERSION " with gki=1 or the build VM\n");
+		return -EOPNOTSUPP;
+	}
+#else
 	/* Android model/BTF checks live in the supplied device test loader. */
 	if ((!plc110_kernel && (!vm || strcmp(utsname()->release,
 		"6.6.127-4k-g46a034eca005-dirty"))) ||
@@ -50,6 +59,7 @@ static int __init ds_port_init(void)
 	}
 	if (!vm)
 		pr_info("PLC110 device test opted in; kernel=%s\n", utsname()->release);
+#endif
 	ret = kallrecon_supply(&hint);
 	if (ret)
 		return ret;

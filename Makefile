@@ -9,11 +9,14 @@ droidspaces_ns-y := \
 	$(PORT_DIR)/proc_ns.o $(PORT_DIR)/proc_root.o $(PORT_DIR)/hooks.o \
 	$(PORT_DIR)/selftest.o $(PORT_DIR)/msg.o $(PORT_DIR)/msgutil.o \
 	$(PORT_DIR)/sem.o $(PORT_DIR)/shm.o $(PORT_DIR)/ipc-util.o \
-	$(PORT_DIR)/ipc-task.o $(PORT_DIR)/ipc-compat.o $(PORT_DIR)/mqueue.o \
-	$(PORT_DIR)/mq_sysctl.o $(PORT_DIR)/ipc_sysctl.o $(PORT_DIR)/fork.o $(if $(filter src/port,$(PORT_DIR)),$(PORT_DIR)/pidfd.o) $(PORT_DIR)/reboot.o \
+	$(PORT_DIR)/ipc-task.o $(PORT_DIR)/ipc-compat.o $(if $(wildcard $(src)/$(PORT_DIR)/mqueue.c),$(PORT_DIR)/mqueue.o) \
+	$(if $(wildcard $(src)/$(PORT_DIR)/mq_sysctl.c),$(PORT_DIR)/mq_sysctl.o) $(PORT_DIR)/ipc_sysctl.o $(PORT_DIR)/fork.o $(if $(wildcard $(src)/$(PORT_DIR)/pidfd.c),$(PORT_DIR)/pidfd.o) $(PORT_DIR)/reboot.o \
 	$(PORT_DIR)/fuse.o $(PORT_DIR)/cgroup-pidlist.o $(PORT_DIR)/bpf-pidns.o \
 	$(PORT_DIR)/perf.o $(PORT_DIR)/perf-original.o $(PORT_DIR)/memfd.o \
 	$(addprefix vendor/kallrecon/,$(DEPS_LIB_OBJS))
+ifneq ($(GKI_ANDROID),)
+ccflags-y += -DDS_GKI_ANDROID='"$(GKI_ANDROID)"' -DDS_GKI_VERSION='"$(GKI_VERSION)"'
+endif
 # Do not enable CONFIG_SYSVIPC: that would change the host task_struct layout.
 ccflags-y += -DCONFIG_PID_NS=1 -DCONFIG_IPC_NS=1 -DCONFIG_POSIX_MQUEUE=1
 ccflags-y += -DCONFIG_POSIX_MQUEUE_SYSCTL=1 -DCONFIG_SYSVIPC_SYSCTL=1

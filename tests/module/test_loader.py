@@ -22,10 +22,23 @@ class LoaderTests(unittest.TestCase):
         shutil.copytree(ROOT / 'kernelsu', self.module)
         kernel = self.module / 'kernel'
         kernel.mkdir()
-        data = b'fake kernel payload, never passed to the real insmod'
-        (kernel / 'droidspaces_ns.ko').write_bytes(data)
-        (kernel / 'SHA256SUMS').write_text(f'{hashlib.sha256(data).hexdigest()}  droidspaces_ns.ko\n')
-        (self.root / 'compatible').write_bytes(b'qcom,canoe-mtp\0qcom,canoe\0')
+        self.kmis = ['android12-5.10', 'android13-5.15', 'android14-6.1',
+                     'android15-6.6', 'android16-6.12', 'android17-6.18']
+        rows, sums = [], []
+        for kmi in self.kmis:
+            ko, abi, notes = f'droidspaces_ns-{kmi}.ko', f'{kmi}.abi', f'{kmi}.notes'
+            for name in (ko, abi, notes):
+                data = f'fake {name}, never passed to the real kernel'.encode()
+                (kernel / name).write_bytes(data)
+                sums.append(f'{hashlib.sha256(data).hexdigest()}  {name}\n')
+            rows.append(f'{kmi}|{ko}|{abi}|{notes}\n')
+        (kernel / 'manifest.tsv').write_text(''.join(rows))
+        (kernel / 'SHA256SUMS').write_text(''.join(sums))
+        (self.module / 'bin').mkdir()
+        checker = self.module / 'bin/abi-check'
+        checker.write_text('#!/bin/sh\n[ "$FAKE_MODE" != abi_error ]\n')
+        checker.chmod(0o755)
+        (self.root / 'btf').write_bytes(b'mocked kernel BTF')
         self.ksud = self.root / 'ksud'
         self.ksud.write_text('''#!/bin/sh
 if [ "$1" = module ]; then
@@ -48,7 +61,8 @@ touch "$FAKE_ROOT/ns/pid" "$FAKE_ROOT/ns/pid_for_children" "$FAKE_ROOT/ns/ipc"
 MODDIR=$FAKE_ROOT/module
 . "$MODDIR/common.sh"
 DS_KSUD=$FAKE_ROOT/ksud
-DS_COMPATIBLE=$FAKE_ROOT/compatible
+DS_BTF=$FAKE_ROOT/btf
+DS_KERNEL_NOTES=$FAKE_ROOT/kernel.notes
 DS_MODULE_SYS=$FAKE_ROOT/sys
 DS_PROC_NS=$FAKE_ROOT/ns
 uname() {
@@ -84,15 +98,60 @@ uname() {
         self.assertIn('[不支持]', self.status)
         self.assertFalse((self.root / 'insmod-calls').exists())
 
-    def test_wrong_device_rejected(self):
-        (self.root / 'compatible').write_bytes(b'qcom,other\0')
-        self.assertNotEqual(self.run_loader().returncode, 0)
+    def test_wrong_android_kmi_rejected(self):
+        self.assertNotEqual(self.run_loader(release="5.15.100-android14-0-g123").returncode, 0)
         self.assertFalse((self.root / 'insmod-calls').exists())
 
     def test_corrupt_payload_rejected(self):
-        (self.module / 'kernel/droidspaces_ns.ko').write_bytes(b'corrupt')
+        (self.module / 'kernel/droidspaces_ns-android16-6.12.ko').write_bytes(b'corrupt')
         self.assertNotEqual(self.run_loader().returncode, 0)
         self.assertIn('SHA-256', self.status)
+        self.assertFalse((self.root / 'insmod-calls').exists())
+
+    def test_all_six_kmis_select_distinct_payloads(self):
+        for kmi in self.kmis:
+            with self.subTest(kmi=kmi):
+                shutil.rmtree(self.root / 'sys', ignore_errors=True)
+                android, version = kmi.split('-')
+                result = self.run_loader(release=f'{version}.99-{android}-0-g123')
+                self.assertEqual(result.returncode, 0, result.stderr)
+                call = (self.root / 'insmod-calls').read_text().splitlines()[-1]
+                self.assertIn(f'droidspaces_ns-{kmi}.ko gki=1 activate=1', call)
+                self.assertIn(kmi, self.status)
+
+    def test_abi_failure_stops_before_insmod(self):
+        self.assertNotEqual(self.run_loader(mode='abi_error').returncode, 0)
+        self.assertIn('[不兼容]', self.status)
+        self.assertFalse((self.root / 'insmod-calls').exists())
+
+    def test_missing_btf_is_explicit(self):
+        (self.root / 'btf').unlink()
+        self.assertNotEqual(self.run_loader().returncode, 0)
+        self.assertIn('[不兼容]', self.status)
+        self.assertFalse((self.root / 'insmod-calls').exists())
+
+    def test_duplicate_manifest_entry_rejected(self):
+        manifest = self.module / 'kernel/manifest.tsv'
+        manifest.write_text(manifest.read_text() * 2)
+        self.assertNotEqual(self.run_loader().returncode, 0)
+        self.assertFalse((self.root / 'insmod-calls').exists())
+
+    def test_no_btf_accepts_exact_kernel_notes(self):
+        (self.root / 'btf').unlink()
+        shutil.copyfile(self.module / 'kernel/android16-6.12.notes', self.root / 'kernel.notes')
+        result = self.run_loader()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('exact validated kernel notes matched', result.stdout)
+
+    def test_no_btf_rejects_different_kernel_build(self):
+        (self.root / 'btf').unlink()
+        (self.root / 'kernel.notes').write_bytes(b'a different kernel build')
+        self.assertNotEqual(self.run_loader().returncode, 0)
+        self.assertFalse((self.root / 'insmod-calls').exists())
+
+    def test_notes_do_not_override_failed_btf_check(self):
+        shutil.copyfile(self.module / 'kernel/android16-6.12.notes', self.root / 'kernel.notes')
+        self.assertNotEqual(self.run_loader(mode='abi_error').returncode, 0)
         self.assertFalse((self.root / 'insmod-calls').exists())
 
     def test_insmod_failure_visible(self):

@@ -17,6 +17,9 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #define CHECK(x) do { if (!(x)) { dprintf(2,"PID LIFETIME FAIL %d: %s errno=%d\n",__LINE__,#x,errno); _exit(1); } } while (0)
+#ifndef DS_TEST_BPF_ITER
+#define DS_TEST_BPF_ITER 1
+#endif
 
 static int channel;
 static int bpf_call(int cmd, union bpf_attr *attr)
@@ -153,7 +156,7 @@ int main(void)
 {
     char *stack=malloc(65536);
     CHECK(stack!=NULL);
-    for (uintptr_t which=1; which<=2; which++) {
+    for (uintptr_t which=1; which<=(DS_TEST_BPF_ITER ? 2 : 1); which++) {
         int pair[2];
         CHECK(socketpair(AF_UNIX,SOCK_SEQPACKET,0,pair)==0);
         channel=pair[1];
@@ -172,6 +175,10 @@ int main(void)
     int status;
     CHECK(waitpid(p,&status,0)==p && WIFEXITED(status) && WEXITSTATUS(status)==0);
     free(stack);
-    puts("DS_PID_LIFETIMES_PASS: perf inheritance and retained FD, BPF iterator retained FD, cgroup pidlist, FUSE mount teardown");
+    if (DS_TEST_BPF_ITER)
+        puts("DS_BPF_ITER_PASS: retained iterator FD");
+    else
+        puts("DS_BPF_ITER_SKIP: baseline has no kernel BTF for tracing programs");
+    puts("DS_PID_LIFETIMES_PASS: perf inheritance and retained FD, cgroup pidlist, FUSE mount teardown");
     return 0;
 }
