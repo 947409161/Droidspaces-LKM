@@ -1,0 +1,48 @@
+#!/bin/sh
+export PATH=/bin
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+echo 0 > /proc/sys/kernel/kptr_restrict
+echo 'DS_VM: baseline'
+uname -r
+result=0
+if unshare -p true || unshare -i true; then
+    echo 'DS_VM: baseline unexpectedly supports namespaces'
+    result=1
+fi
+for cycle in 1 2 3; do
+    echo "DS_VM: lifecycle cycle $cycle"
+    if ! /load-module /droidspaces_ns.ko; then
+        result=1
+        break
+    fi
+    if ! rmmod droidspaces_ns; then
+        result=1
+        break
+    fi
+done
+if [ "$result" = 0 ]; then
+    echo 'DS_VM: activating test-kernel hooks'
+    if /load-module /droidspaces_ns.ko activate=1; then
+        /namespaces || result=1
+        # Reclaim caches and allow chained RCU/workqueue destruction to finish.
+        for attempt in $(seq 1 20); do
+            echo 3 > /proc/sys/vm/drop_caches
+            sleep 1
+            pid_live=$(cat /sys/module/droidspaces_ns/parameters/pid_live)
+            ipc_live=$(cat /sys/module/droidspaces_ns/parameters/ipc_live)
+            [ "$pid_live" = 0 ] && [ "$ipc_live" = 0 ] && break
+        done
+        echo "DS_VM: remaining pid=$pid_live ipc=$ipc_live"
+        [ "$pid_live" = 0 ] && [ "$ipc_live" = 0 ] || result=1
+        if rmmod droidspaces_ns; then
+            echo 'DS_VM: active hooks were unexpectedly unloadable'
+            result=1
+        fi
+    else
+        result=1
+    fi
+fi
+dmesg | grep -E 'droidspaces_ns|BUG:|WARNING:|Oops|unresolved'
+echo "DS_VM_RESULT=$result"
+poweroff -f
