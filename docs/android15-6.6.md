@@ -41,7 +41,8 @@ GKI 的模块接口兼容性不覆盖这些依赖。
 
 模块要求 Device Tree compatible 为 `linux,dummy-virt`，且完整 release 匹配已记录的
 测试内核（上述 DDK 基线或下文 PLC110 boot image），
-否则在符号解析和入口修改前返回 `EOPNOTSUPP`。默认加载执行可卸载的核心自测；
+PLC110 真机测试可显式传入 `plc110_test=1`，仍只接受记录的 6.6.118 完整 release；
+其他情况在符号解析和入口修改前返回 `EOPNOTSUPP`。默认加载执行可卸载的核心自测；
 `activate=1` 接入 namespace 路径后持续驻留到重启。
 
 ## 适配内容
@@ -83,13 +84,15 @@ CFI 检查通过。这些检查不证明其他构建或未覆盖路径兼容。
 
 另使用用户提供的 `6.6.118-android15-8` boot image 进行 QEMU 验证，
 并适配其未启用进程事件 connector 的配置差异。输入哈希、结果及复现命令见
-[PLC110 验证记录](plc110-6.6-vm.md)。仍未开放真机加载。
+[PLC110 验证记录](plc110-6.6-vm.md)。真机测试通过 `plc110_test=1` 显式开启，见
+[PLC110 手动测试说明](plc110-device-test.md)。
 
 ## 限制与后续设备适配
 
 没有运行 6.6 真机上的 `ksud insmod`、Droidspaces check 或完整容器启动，
 没有验证 Android SELinux Enforcing、32 位兼容任务、长期高并发和 OOM。
-本实验不生成 KernelSU 自动加载包，不替换现有 6.12 发布资产。
+本实验不生成 KernelSU 自动加载包。PLC110 手动测试包包含加载脚本和校验值，
+不替换现有 6.12 发布资产。
 
 适配实际 6.6 设备仍需完整 `uname -r`、内核配置、BTF/符号及实际内核 Image，
 对照结构布局、函数签名与入口指令完成检查，再进行匹配内核和真机验证。

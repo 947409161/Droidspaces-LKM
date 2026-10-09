@@ -44,4 +44,6 @@ Adaptations:
 - SHM_HUGETLB is rejected: CONFIG_SYSVIPC=n native MM uses a false inline SHM hugepage predicate.
 - PLC110 6.6.118 boot image adds a second QEMU target; see docs/plc110-6.6-vm.md.
 - proc_exit_connector is resolved dynamically because CONFIG_PROC_EVENTS differs.
-- No device activation, KernelSU package or release promotion for this experimental build.
+- Explicit plc110_test=1 permits device testing on the exact PLC110 6.6.118 release.
+  The manual loader verifies Android model, kernel BTF and payload checksum.
+- No automatic boot package or release promotion for this experimental build.

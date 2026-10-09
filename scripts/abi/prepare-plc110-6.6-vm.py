@@ -2,7 +2,8 @@
 """Prepare QEMU inputs from the recorded PLC110 6.6 boot image.
 
 Requires the host lz4 CLI. Changes only the module's vermagic release prefix;
-this does not establish ABI compatibility or enable loading on a real device.
+this does not establish ABI compatibility. Device opt-in is controlled by the
+module source and its plc110_test parameter, not by vermagic.
 """
 import argparse
 import gzip
@@ -82,7 +83,7 @@ def prepare(boot, module, destination):
     report = dict(boot_sha256=BOOT_SHA256, release=RELEASE,
                   image_sha256=hashlib.sha256(kernel).hexdigest(),
                   module_sha256=hashlib.sha256(output).hexdigest(),
-                  scope='matching QEMU only; device loading remains disabled')
+                  scope='recorded kernel; PLC110 device testing requires plc110_test=1')
     (dest / 'inputs.json').write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report, indent=2))
 

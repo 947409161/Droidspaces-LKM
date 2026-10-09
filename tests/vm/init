@@ -6,13 +6,14 @@ echo 0 > /proc/sys/kernel/kptr_restrict
 echo 'DS_VM: baseline'
 uname -r
 result=0
+params=$(cat /module-params 2>/dev/null)
 if unshare -p true || unshare -i true; then
     echo 'DS_VM: baseline unexpectedly supports namespaces'
     result=1
 fi
 for cycle in 1 2 3; do
     echo "DS_VM: lifecycle cycle $cycle"
-    if ! /load-module /droidspaces_ns.ko; then
+    if ! /load-module /droidspaces_ns.ko "$params"; then
         result=1
         break
     fi
@@ -23,7 +24,7 @@ for cycle in 1 2 3; do
 done
 if [ "$result" = 0 ]; then
     echo 'DS_VM: activating test-kernel hooks'
-    if /load-module /droidspaces_ns.ko activate=1; then
+    if /load-module /droidspaces_ns.ko "$params activate=1"; then
         /namespaces || result=1
         /pid-lifetimes || result=1
         /pid-policy || result=1

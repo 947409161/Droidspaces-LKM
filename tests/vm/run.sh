@@ -14,6 +14,7 @@ docker run --rm --platform linux/arm64 -v "$root:/work" \
     -e DS_VM_KERNEL="$kernel" \
     -e DS_VM_MODULE="$module" \
     -e DS_VM_LOG_DIR="/work/$log_dir" \
+    -e DS_VM_MODULE_PARAMS="${DS_VM_MODULE_PARAMS:-}" \
     -e DS_TEST_PIDFD_NS_IOCTL="${DS_TEST_PIDFD_NS_IOCTL:-1}" \
     -e DS_TEST_SHM_HUGETLB_REJECT="${DS_TEST_SHM_HUGETLB_REJECT:-0}" \
     droidspaces-lkm-vm:local sh -eu -c '
@@ -34,6 +35,7 @@ docker run --rm --platform linux/arm64 -v "$root:/work" \
     cp /tmp/mqueue-test /tmp/root/mqueue-test
     cp /tmp/pid-lifetimes /tmp/root/pid-lifetimes
     cp /tmp/pid-policy /tmp/root/pid-policy
+    printf "%s\n" "$DS_VM_MODULE_PARAMS" > /tmp/root/module-params
     cp /work/tests/vm/init /tmp/root/init
     chmod +x /tmp/root/init
     cp "$DS_VM_MODULE" /tmp/root/droidspaces_ns.ko

@@ -10,9 +10,13 @@
 
 extern void (*ds_proc_exit_connector)(struct task_struct *task);
 
+static bool plc110_test;
+module_param(plc110_test, bool, 0400);
+MODULE_PARM_DESC(plc110_test, "Opt in to PLC110 testing on the exact recorded 6.6.118 kernel");
+
 static bool activate;
 module_param(activate, bool, 0400);
-MODULE_PARM_DESC(activate, "Install experimental hooks on the matching Android 15 / 6.6 QEMU kernel");
+MODULE_PARM_DESC(activate, "Install experimental hooks on a recorded 6.6 kernel");
 
 static int live_count_get(char *buffer, const struct kernel_param *param)
 {
@@ -31,16 +35,21 @@ static int __init ds_port_init(void)
 {
 	/* TCG discovery can exceed five seconds under host CPU contention. */
 	struct kallrecon_hint hint = { .timeout_ms = 15000 };
+	bool vm = of_machine_is_compatible("linux,dummy-virt");
+	bool plc110_kernel = !strcmp(utsname()->release,
+		"6.6.118-android15-8-ge58033dc8ea6-abogki498046332-4k");
 	int ret;
 
-	/* Internal ABI and entry replacements are validated only on this VM. */
-	if (!of_machine_is_compatible("linux,dummy-virt") ||
-	    (strcmp(utsname()->release, "6.6.127-4k-g46a034eca005-dirty") &&
-	     strcmp(utsname()->release,
-		    "6.6.118-android15-8-ge58033dc8ea6-abogki498046332-4k"))) {
-		pr_err("android15-6.6 prototype is restricted to its matching QEMU kernel\n");
+	/* Android model/BTF checks live in the supplied device test loader. */
+	if ((!plc110_kernel && (!vm || strcmp(utsname()->release,
+		"6.6.127-4k-g46a034eca005-dirty"))) ||
+	    (!vm && !plc110_test)) {
+		pr_err("requires a recorded QEMU kernel or PLC110 6.6.118 with plc110_test=1; got %s\n",
+		       utsname()->release);
 		return -EOPNOTSUPP;
 	}
+	if (!vm)
+		pr_info("PLC110 device test opted in; kernel=%s\n", utsname()->release);
 	ret = kallrecon_supply(&hint);
 	if (ret)
 		return ret;
@@ -102,4 +111,4 @@ static void __exit ds_port_exit(void)
 module_init(ds_port_init);
 module_exit(ds_port_exit);
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("Experimental Android 15 / 6.6 PID/IPC namespace port for QEMU");
+MODULE_DESCRIPTION("Experimental PID/IPC namespace port for recorded 6.6 kernels and PLC110 testing");
