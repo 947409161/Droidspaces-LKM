@@ -22,6 +22,14 @@ ccflags-y += -DCONFIG_PID_NS=1 -DCONFIG_IPC_NS=1 -DCONFIG_POSIX_MQUEUE=1
 ccflags-y += -DCONFIG_POSIX_MQUEUE_SYSCTL=1 -DCONFIG_SYSVIPC_SYSCTL=1
 ccflags-y += -include $(src)/$(PORT_DIR)/names.h
 ccflags-y += -I$(srctree)/fs/proc -I$(srctree)/fs -I$(srctree)
+else ifeq ($(TARGET),devtmpfs)
+obj-m := droidspaces_devtmpfs.o
+droidspaces_devtmpfs-y := src/devtmpfs/main.o src/devtmpfs/devtmpfs.o src/devtmpfs/hooks.o src/devtmpfs/original.o $(addprefix vendor/kallrecon/,$(DEPS_LIB_OBJS))
+ccflags-y += -I$(srctree)
+ifeq ($(TEST_DEVTMPFS),1)
+obj-m += droidspaces_devtmpfs_fixture.o
+droidspaces_devtmpfs_fixture-y := tests/vm/devtmpfs-fixture.o
+endif
 else
 obj-m := droidspaces_probe.o
 droidspaces_probe-y := src/probe.o $(addprefix vendor/kallrecon/,$(DEPS_LIB_OBJS))
