@@ -110,6 +110,10 @@ fail_mq:
 	retire_mq_sysctls(ns);
 
 fail_put:
+	if (ns->mq_mnt) {
+		mq_clear_sbinfo(ns);
+		kern_unmount(ns->mq_mnt);
+	}
 	put_user_ns(ns->user_ns);
 	ns_free_inum(&ns->ns);
 fail_free:

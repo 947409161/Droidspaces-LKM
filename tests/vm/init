@@ -25,16 +25,21 @@ if [ "$result" = 0 ]; then
     echo 'DS_VM: activating test-kernel hooks'
     if /load-module /droidspaces_ns.ko activate=1; then
         /namespaces || result=1
+        /pid-lifetimes || result=1
+        /pid-policy || result=1
+        /ipc-test || result=1
+        /mqueue-test || result=1
         # Reclaim caches and allow chained RCU/workqueue destruction to finish.
         for attempt in $(seq 1 20); do
             echo 3 > /proc/sys/vm/drop_caches
             sleep 1
             pid_live=$(cat /sys/module/droidspaces_ns/parameters/pid_live)
             ipc_live=$(cat /sys/module/droidspaces_ns/parameters/ipc_live)
-            [ "$pid_live" = 0 ] && [ "$ipc_live" = 0 ] && break
+            ipc_tasks=$(cat /sys/module/droidspaces_ns/parameters/ipc_tasks)
+            [ "$pid_live" = 0 ] && [ "$ipc_live" = 0 ] && [ "$ipc_tasks" = 0 ] && break
         done
-        echo "DS_VM: remaining pid=$pid_live ipc=$ipc_live"
-        [ "$pid_live" = 0 ] && [ "$ipc_live" = 0 ] || result=1
+        echo "DS_VM: remaining pid=$pid_live ipc=$ipc_live ipc_tasks=$ipc_tasks"
+        [ "$pid_live" = 0 ] && [ "$ipc_live" = 0 ] && [ "$ipc_tasks" = 0 ] || result=1
         if rmmod droidspaces_ns; then
             echo 'DS_VM: active hooks were unexpectedly unloadable'
             result=1

@@ -48,9 +48,9 @@ extern int ipc_min_cycle;
 #define IPCMNI_IDX_MASK		((1 << IPCMNI_SHIFT) - 1)
 #endif /* CONFIG_SYSVIPC_SYSCTL */
 
-void sem_init(void);
-void msg_init(void);
-void shm_init(void);
+int sem_init(void);
+int msg_init(void);
+int shm_init(void);
 
 struct ipc_namespace;
 struct pid_namespace;
@@ -61,7 +61,6 @@ extern void mq_clear_sbinfo(struct ipc_namespace *ns);
 static inline void mq_clear_sbinfo(struct ipc_namespace *ns) { }
 #endif
 
-#ifdef CONFIG_SYSVIPC
 void sem_init_ns(struct ipc_namespace *ns);
 int msg_init_ns(struct ipc_namespace *ns);
 void shm_init_ns(struct ipc_namespace *ns);
@@ -69,15 +68,6 @@ void shm_init_ns(struct ipc_namespace *ns);
 void sem_exit_ns(struct ipc_namespace *ns);
 void msg_exit_ns(struct ipc_namespace *ns);
 void shm_exit_ns(struct ipc_namespace *ns);
-#else
-static inline void sem_init_ns(struct ipc_namespace *ns) { }
-static inline int msg_init_ns(struct ipc_namespace *ns) { return 0; }
-static inline void shm_init_ns(struct ipc_namespace *ns) { }
-
-static inline void sem_exit_ns(struct ipc_namespace *ns) { }
-static inline void msg_exit_ns(struct ipc_namespace *ns) { }
-static inline void shm_exit_ns(struct ipc_namespace *ns) { }
-#endif
 
 /*
  * Structure that holds the parameters needed by the ipc operations
@@ -113,7 +103,7 @@ struct ipc_ids;
 
 void ipc_init_ids(struct ipc_ids *ids);
 #ifdef CONFIG_PROC_FS
-void __init ipc_init_proc_interface(const char *path, const char *header,
+int ipc_init_proc_interface(const char *path, const char *header,
 		int ids, int (*show)(struct seq_file *, void *));
 struct pid_namespace *ipc_seq_pid_ns(struct seq_file *);
 #else

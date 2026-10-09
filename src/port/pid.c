@@ -453,16 +453,24 @@ const struct proc_ns_operations pidns_for_children_operations = {
 
 int ds_pid_init(void)
 {
-	/* No panic-on-OOM or global sysctl registration in an external module. */
+	int ret;
+
+	/* Explicit registration and cleanup replace boot-time initcalls. */
 	pid_ns_cachep = kmem_cache_create("ds_pid_namespace",
 			 sizeof(struct pid_namespace), 0, SLAB_ACCOUNT, NULL);
-	return pid_ns_cachep ? 0 : -ENOMEM;
+	if (!pid_ns_cachep)
+		return -ENOMEM;
+	ret = ds_memfd_init();
+	if (ret)
+		kmem_cache_destroy(pid_ns_cachep);
+	return ret;
 }
 
 void ds_pid_exit(void)
 {
 	unsigned int i;
 
+	ds_memfd_exit();
 	/* Last namespace releases run in module-owned RCU callbacks. */
 	rcu_barrier();
 	if (WARN_ON(atomic_read(&ds_pid_live)))

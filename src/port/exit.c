@@ -7,6 +7,7 @@
 
 #include <linux/mm.h>
 #include <linux/slab.h>
+#include "ipc-backend.h"
 #include <linux/sched/autogroup.h>
 #include <linux/sched/mm.h>
 #include <linux/sched/stat.h>
@@ -895,8 +896,9 @@ void __noreturn do_exit(long code)
 		acct_process();
 	trace_sched_process_exit(tsk);
 
-	exit_sem(tsk);
-	exit_shm(tsk);
+	ds_exit_sem(tsk);
+	ds_exit_shm(tsk);
+	ds_ipc_task_release(tsk);
 	exit_files(tsk);
 	exit_fs(tsk);
 	if (group_dead)

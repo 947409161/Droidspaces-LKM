@@ -13,6 +13,9 @@
 #include <sys/shm.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/ioctl.h>
+#include <sys/syscall.h>
+#include <linux/reboot.h>
 #include <unistd.h>
 
 #define CHECK(expr) do { if (!(expr)) { \
@@ -79,6 +82,18 @@ static int clone_init(void *unused)
 	return 1;
 }
 
+static int reboot_init(void *command)
+{
+	CHECK(getpid() == 1);
+	CHECK(syscall(SYS_reboot, 0, 0, 0, NULL) == -1 && errno == EINVAL);
+	CHECK(syscall(SYS_reboot, LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2,
+		LINUX_REBOOT_CMD_CAD_ON, NULL) == -1 && errno == EINVAL);
+	leave_orphan();
+	syscall(SYS_reboot, LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2,
+		(unsigned long)command, NULL);
+	_exit(1);
+}
+
 int main(void)
 {
 	struct stat initial, isolated, restored;
@@ -106,6 +121,27 @@ int main(void)
 			    CLONE_NEWPID | CLONE_NEWIPC | SIGCHLD, NULL);
 	CHECK(child >= 0);
 	reap(child);
+	/* pidfd ioctl obtains real nsfs references, including the host IPC fallback. */
+	int self_pidfd = syscall(SYS_pidfd_open, getpid(), 0);
+	CHECK(self_pidfd >= 0);
+	for (unsigned nr = 2; nr <= 6; nr++) {
+		if (nr == 3 || nr == 4) continue;
+		int nsfd = ioctl(self_pidfd, _IO(0xff, nr), 0);
+		CHECK(nsfd >= 0);
+		CHECK(fstat(nsfd, &restored) == 0);
+		CHECK(close(nsfd) == 0);
+	}
+	CHECK(close(self_pidfd) == 0);
+	unsigned commands[] = { LINUX_REBOOT_CMD_RESTART, LINUX_REBOOT_CMD_RESTART2,
+		LINUX_REBOOT_CMD_HALT, LINUX_REBOOT_CMD_POWER_OFF };
+	for (unsigned i = 0; i < sizeof(commands) / sizeof(commands[0]); i++) {
+		child = clone(reboot_init, (char *)stack + 65536, CLONE_NEWPID | SIGCHLD,
+			(void *)(unsigned long)commands[i]);
+		CHECK(child >= 0);
+		int status;
+		CHECK(waitpid(child, &status, 0) == child);
+		CHECK(WIFSIGNALED(status) && WTERMSIG(status) == (i < 2 ? SIGHUP : SIGINT));
+	}
 	free(stack);
 	child = fork();
 	CHECK(child >= 0);
@@ -120,14 +156,6 @@ int main(void)
 	reap(child);
 	CHECK(close(ipc_fd) == 0);
 	CHECK(close(pid_fd) == 0);
-	/* Identity/lifetime support must not be reported as working SysV IPC. */
-	errno = 0;
-	CHECK(msgget(IPC_PRIVATE, 0600) == -1 && errno == ENOSYS);
-	errno = 0;
-	CHECK(semget(IPC_PRIVATE, 1, 0600) == -1 && errno == ENOSYS);
-	errno = 0;
-	CHECK(shmget(IPC_PRIVATE, 4096, 0600) == -1 && errno == ENOSYS);
-	puts("DS_IPC_BACKENDS_ABSENT: msgget/semget/shmget still return ENOSYS");
 	puts("DS_NAMESPACES_PASS: PID 1, nested PID, procfs, orphan reaping, IPC identity, setns, clone, permissions");
 	return 0;
 }

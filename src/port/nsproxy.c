@@ -10,6 +10,7 @@
  */
 
 #include <linux/slab.h>
+#include "ipc-backend.h"
 #include <linux/export.h>
 #include <linux/nsproxy.h>
 #include <linux/init_task.h>
@@ -512,7 +513,7 @@ static void commit_nsset(struct nsset *nsset)
 
 #ifdef CONFIG_IPC_NS
 	if (flags & CLONE_NEWIPC)
-		exit_sem(me);
+		ds_exit_sem(me);
 #endif
 
 #ifdef CONFIG_TIME_NS
