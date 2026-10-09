@@ -1,0 +1,6 @@
+id=droidspaces_lkm
+name=Droidspaces LKM
+version=v0.1.0
+versionCode=1
+author=Shikochin
+description=[待加载] 开机动态补齐 PID / IPC namespace；仅限 canoe / 6.12.69，状态将在本次开机加载后更新。
