@@ -12,7 +12,8 @@ TARGETS = json.loads((ROOT / 'build/gki-targets.json').read_text())
 def source_hashes(target):
     paths = [ROOT/'Makefile', ROOT/'src/gki-target.h']
     paths += [p for directory in (ROOT/target['source'], ROOT/'vendor/kallrecon')
-              for p in directory.rglob('*') if p.is_file() and '.git' not in p.parts]
+              for p in directory.rglob('*') if p.is_file()
+              and not {'.git', '.DS_Store', '__pycache__'}.intersection(p.parts)]
     return {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
             for p in sorted(paths)}
 
