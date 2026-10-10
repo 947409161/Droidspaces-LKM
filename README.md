@@ -1,5 +1,8 @@
 # Droidspaces LKM
 
+> **v0.1.2 暂停安装（2026-10-10）：PLZ110 在首次解锁后出现重启。已复现并保留日志，
+> 根因尚在排查。请禁用 v0.1.2，暂用 v0.1.1；先前手动加载后的回归不能代表完整开机验证。**
+
 为 Android 内核动态补充 Droidspaces 所需的 PID / IPC namespace、devtmpfs 及 Sandboxing（user namespace）能力。
 通过 KernelSU 的 `ksud insmod` 加载，无需刷写内核，设备运行时无需内核源码。
 
