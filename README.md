@@ -1,12 +1,12 @@
 # Droidspaces LKM
 
-> **v0.1.2 暂停安装（2026-10-10）：PLZ110 在首次解锁后出现重启。已复现并保留日志，
-> 根因尚在排查。请禁用 v0.1.2，暂用 v0.1.1；先前手动加载后的回归不能代表完整开机验证。**
+> **v0.1.3 修复了 v0.1.2 首次解锁时的 FUSE 内核崩溃。v0.1.2 Release 已撤下，
+> 请升级至 v0.1.3。**
 
 为 Android 内核动态补充 Droidspaces 所需的 PID / IPC namespace、devtmpfs 及 Sandboxing（user namespace）能力。
 通过 KernelSU 的 `ksud insmod` 加载，无需刷写内核，设备运行时无需内核源码。
 
-v0.1.2 是 PLZ110 指定 6.12.69 内核的设备版本，提供 PID / IPC + devtmpfs +
+v0.1.3 是 PLZ110 指定 6.12.69 内核的设备版本，提供 PID / IPC + devtmpfs +
 Sandboxing。已在真机 SELinux Enforcing 环境中，通过身份与权限隔离测试，以及
 实际 Droidspaces 容器内的 Bubblewrap 工作负载。实现和验证范围见
 [user namespace 移植状态](docs/userns-status.md)。
@@ -14,7 +14,7 @@ Sandboxing。已在真机 SELinux Enforcing 环境中，通过身份与权限隔
 v0.2.0 是此前发布的独立 GKI 实验版本，提供六份 PID / IPC 构建，不含
 devtmpfs；它不替代 PLZ110 专用版本。同一 KMI 不代表厂商内部 ABI 兼容。
 
-## PLZ110 v0.1.2
+## PLZ110 v0.1.3
 
 仅支持 `qcom,canoe`、ARM64、4 KiB 页面及完整内核版本：
 
@@ -22,8 +22,8 @@ devtmpfs；它不替代 PLZ110 专用版本。同一 KMI 不代表厂商内部 A
 6.12.69-android16-6-g242e1a07f878-ab15865446-4k
 ```
 
-从 [v0.1.2 Release](https://github.com/Shikochin/Droidspaces-LKM/releases/tag/v0.1.2)
-下载 `Droidspaces-LKM-KernelSU-v0.1.2-PLZ110.zip`，在 KernelSU 管理器中安装后
+从 [v0.1.3 Release](https://github.com/Shikochin/Droidspaces-LKM/releases/tag/v0.1.3)
+下载 `Droidspaces-LKM-KernelSU-v0.1.3-PLZ110.zip`，在 KernelSU 管理器中安装后
 重启。安装包使用相同的 `droidspaces_lkm` 模块 ID，可替换已安装的旧版本；
 安装和每次开机均要求设备、完整内核版本及 BTF 指纹与验证目标匹配。
 
@@ -43,7 +43,7 @@ devtmpfs；它不替代 PLZ110 专用版本。同一 KMI 不代表厂商内部 A
 已激活模块需重启才能替换或移除。
 
 Release 同时提供两个独立 `.ko` 与 `SHA256SUMS`，建议使用包含目标校验的
-完整 KernelSU ZIP。版本说明见 [v0.1.2 验证与安装](docs/releases-v0.1.2.md)。
+完整 KernelSU ZIP。版本说明见 [v0.1.3 验证与安装](docs/releases-v0.1.3.md)。
 已验证 HMA UID Fake 0.4.0+1c71b6c 和 NoMount 共存；未知入口修改会拒绝加载。
 Droidspaces 容器需启用 `--allow-sandboxing`；不会自动更改现有容器设置。
 
@@ -180,7 +180,8 @@ PLC110 的指定 6.6.118 内核另有 [手动测试包说明](docs/plc110-device
 - 使用未导出的内核接口和实验性入口替换，不保证跨厂商或跨内核构建兼容。
 - 不支持 32 位 IPC 兼容系统调用；`SHM_HUGETLB` 返回 `EOPNOTSUPP`。
 - 未覆盖完整 rootfs / systemd 启动、长期高并发、OOM 和所有 SELinux 域。
-- user namespace 仅包含在 PLZ110 v0.1.2 中；devtmpfs 包含在 PLZ110 v0.1.1 / v0.1.2 中。
+- user namespace 请使用 PLZ110 v0.1.3；devtmpfs 包含在 PLZ110 v0.1.1 / v0.1.3 中。
+- Android 宿主 FUSE 挂载受支持；沙箱内新建 FUSE 挂载返回 `EOPNOTSUPP`。
 - 不补充额外 cgroup 控制器。尚未覆盖 idmapped mount、全部内联权限路径及长期高负载，
   已验证 Bubblewrap 场景不代表完整 Linux USER_NS 等价性或所有沙箱应用均兼容。
 - 原生已支持 PID namespace 的内核不属于本补丁的适用范围。

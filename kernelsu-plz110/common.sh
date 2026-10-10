@@ -90,7 +90,7 @@ ds_load() {
         return 1
     fi
     if ds_ns_active && ! ds_sandbox_available; then
-        ds_status '[需重启] 当前 PID / IPC 模块不含本版 Sandboxing；请重启以加载 v0.1.2。'
+        ds_status '[需重启] 当前 PID / IPC 模块不含本版 Sandboxing；请重启以加载 v0.1.3。'
         return 1
     fi
     if [ -d "$DS_DEV_SYS" ] && ! ds_dev_active; then

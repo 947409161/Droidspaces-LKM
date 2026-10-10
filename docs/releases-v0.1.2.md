@@ -1,5 +1,8 @@
 # Droidspaces LKM v0.1.2 — PLZ110 Sandboxing
 
+> 此 Release 已因首次解锁时的 FUSE 内核崩溃撤下。请使用 [v0.1.3](releases-v0.1.3.md)。
+> 下文仅保留原始发布记录，不代表完整开机流程通过验证。
+
 此版本在现有内核上通过 LKM 增加 user namespace，供 Droidspaces 的
 `--allow-sandboxing` 使用，并保留 PID / IPC namespace 与 devtmpfs。
 无需刷写内核或在设备上提供内核源码。
