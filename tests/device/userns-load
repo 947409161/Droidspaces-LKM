@@ -1,7 +1,7 @@
 #!/system/bin/sh
 # Manual candidate loader; this is not an automatic boot module.
 set -eu
-base=/data/local/tmp/droidspaces-userns-test
+base=${DS_USERNS_TEST_DIR:-/data/local/tmp/droidspaces-userns-test}
 [ "$(id -u)" = 0 ]
 [ "$(uname -m)" = aarch64 ]
 [ "$(uname -r)" = 6.12.69-android16-6-g242e1a07f878-ab15865446-4k ]

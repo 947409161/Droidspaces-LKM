@@ -1,7 +1,7 @@
 #!/system/bin/sh
 # No module loading, reboot or changes to existing Droidspaces containers.
 set -eu
-base=/data/local/tmp/droidspaces-userns-test
+base=${DS_USERNS_TEST_DIR:-/data/local/tmp/droidspaces-userns-test}
 [ "$(id -u)" = 0 ]
 [ "$(uname -r)" = 6.12.69-android16-6-g242e1a07f878-ab15865446-4k ]
 [ "$(getenforce)" = Enforcing ]
@@ -18,7 +18,7 @@ cd "$base"
 sha256sum -c SHA256SUMS
 # The test mount tree and network disappear when the runner and its children exit.
 exec "$base/busybox" unshare -m -n -- "$base/busybox" sh -eu -c '
-    base=/data/local/tmp/droidspaces-userns-test
+    base=${DS_USERNS_TEST_DIR:-/data/local/tmp/droidspaces-userns-test}
     bb=$base/busybox
     "$bb" mount --make-rprivate /
     mkdir -p "$base/root"
