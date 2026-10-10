@@ -1,0 +1,26 @@
+Source: Android common kernel, kernel/user_namespace.c
+DDK: ghcr.io/ylarod/ddk-min@sha256:4dd088dc94b391c926cf09215e0a5958f3dfe7d8eeed3616f9041224f85b1d1a
+Original source SHA256: 1ee1a746ea8e1ba1d3316c2500b3fe305adc0447e8526e745eab0dc6f3aa061f
+
+Additional source: Android common kernel, kernel/cred.c
+Original credential source SHA256: 69b4dde11eb4eba9958c0c9bd4d83ac71476c9de25c2cc46b6cc818c9c4f8536
+
+Adaptations:
+- Prefix user namespace definitions to keep them separate from native symbols.
+- Replace the boot initcall with explicit slab/workqueue initialization and cleanup.
+- Track private namespaces, use a dedicated destruction workqueue, and drain
+  private credential RCU callbacks before draining namespace work at teardown.
+- Port credential duplication and release with user namespace reference handling.
+  These copies belong only to this module; they never become native task or file
+  credentials and are not mixed with native prepare/put_cred lifecycles.
+- Provide QEMU-only test endpoints under /proc/ds_userns_test. They exercise the
+  upstream map-write implementation and permission checks without adding
+  /proc/<pid>/uid_map, switching a task namespace, or patching native entries.
+- Require one of the two recorded 6.12 VM kernels and linux,dummy-virt.
+  Real phone loading and Sandboxing activation are intentionally unavailable.
+
+Additional source: Android common kernel, kernel/utsname.c
+Original UTS source SHA256: 436508ed5990edb5f032df8ad5963c537ed74d405c6f41b7375eed1486b921ca
+- Use an independent UTS slab and prefixed operations, preserving upstream copy,
+  name, owner, quota and release semantics. Test only private objects; native
+  task nsproxies and the host UTS implementation are left unchanged.

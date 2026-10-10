@@ -22,6 +22,10 @@ ccflags-y += -DCONFIG_PID_NS=1 -DCONFIG_IPC_NS=1 -DCONFIG_POSIX_MQUEUE=1
 ccflags-y += -DCONFIG_POSIX_MQUEUE_SYSCTL=1 -DCONFIG_SYSVIPC_SYSCTL=1
 ccflags-y += -include $(src)/$(PORT_DIR)/names.h
 ccflags-y += -I$(srctree)/fs/proc -I$(srctree)/fs -I$(srctree)
+else ifeq ($(TARGET),userns)
+obj-m := droidspaces_userns_test.o
+droidspaces_userns_test-y := src/userns/main.o src/userns/user_namespace.o src/userns/credentials.o src/userns/utsname.o
+ccflags-y += -DCONFIG_USER_NS=1 -include $(src)/src/userns/names.h
 else ifeq ($(TARGET),devtmpfs)
 obj-m := droidspaces_devtmpfs.o
 droidspaces_devtmpfs-y := src/devtmpfs/main.o src/devtmpfs/devtmpfs.o src/devtmpfs/hooks.o src/devtmpfs/original.o $(addprefix vendor/kallrecon/,$(DEPS_LIB_OBJS))

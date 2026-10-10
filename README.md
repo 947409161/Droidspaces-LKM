@@ -5,7 +5,7 @@
 
 v0.1.1 是 PLZ110 指定 6.12.69 内核的设备版本，提供 PID / IPC + devtmpfs，
 已通过该设备真机测试。Sandboxing（user namespace）不包含在本版本中，
-计划于 v0.1.2 继续适配。
+计划于 v0.1.2 继续适配，实验进度见 [user namespace 移植状态](docs/userns-status.md)。
 
 v0.2.0 是此前发布的独立 GKI 实验版本，提供六份 PID / IPC 构建，不含
 devtmpfs；它不替代 PLZ110 专用版本。同一 KMI 不代表厂商内部 ABI 兼容。
