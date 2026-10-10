@@ -19,7 +19,7 @@
 #include "ipc-backend.h"
 #ifdef DS_USERNS_LIVE
 #include "../userns/live.h"
-extern u32 ds_userns_mm_init_original[], ds_userns_ns_ioctl_original[], ds_userns_sk_getsockopt_original[];
+extern u32 ds_userns_mm_init_original[], ds_userns_ns_ioctl_original[], ds_userns_sk_getsockopt_original[], ds_userns_fuse_get_tree_original[];
 #include <linux/user_namespace.h>
 #include <linux/utsname.h>
 #endif
@@ -216,6 +216,7 @@ struct ds_hook {
 #define HOOK_ORIGINAL(name, target, original) { name, (unsigned long)(target), 0, { 0 }, { 0 }, original, 4 }
 static struct ds_hook hooks[] = {
 #ifdef DS_USERNS_LIVE
+	HOOK_ORIGINAL("fuse_get_tree", ds_userns_fuse_get_tree, ds_userns_fuse_get_tree_original),
 	HOOK_ORIGINAL("sk_getsockopt", ds_userns_sk_getsockopt, ds_userns_sk_getsockopt_original),
 	HOOK("netlink_recvmsg", ds_userns_netlink_recvmsg),
 	HOOK("__scm_send", ds_userns_scm_send),

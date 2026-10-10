@@ -1,5 +1,8 @@
 # PLZ110 user namespace 移植状态
 
+> v0.1.2 已复现首次解锁时的 FUSE 内核崩溃，暂停安装。
+> [原因与修正候选](v0.1.2-boot-failure.md)；先前测试结果不代表完整开机验证。
+
 v0.1.2 在 PLZ110 当前内核上通过纯 LKM 提供 Droidspaces Sandboxing。
 已在真机 SELinux Enforcing 下验证 UID/GID 映射、权限拒绝、生命周期和实际
 Droidspaces 容器内的三种 Bubblewrap 配置。没有刷写内核，也没有修改 Droidspaces 检测。

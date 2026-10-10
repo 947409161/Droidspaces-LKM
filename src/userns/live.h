@@ -73,5 +73,6 @@ int ds_userns_unix_dgram_recvmsg(struct sock *, struct msghdr *, size_t, int);
 int ds_userns_unix_stream_read_generic(struct unix_stream_read_state *, bool);
 int ds_userns_unix_dgram_recvmsg_entry(struct socket *, struct msghdr *, size_t, int);
 int ds_userns_unix_seqpacket_recvmsg(struct socket *, struct msghdr *, size_t, int);
+int ds_userns_fuse_get_tree(struct fs_context *);
 int ds_userns_netlink_recvmsg(struct socket *, struct msghdr *, size_t, int);
 #endif

@@ -124,3 +124,13 @@ PLZ110 hardware coexistence:
 - src/health/userns.c is an original bounded boot check: drop to UID/GID 1000,
   create a user namespace, reject a host-root map, map the caller, reject host
   setns, and create a private UTS namespace. It does not change global policy.
+
+FUSE boot-crash correction:
+- Native fuse_conn_init callers omit the unused user_ns argument when the host
+  has CONFIG_USER_NS=n. Preserve their initial-namespace ownership instead of
+  dereferencing that argument after enabling USER_NS in the LKM translation unit.
+- Wrap fuse_get_tree with a checked native trampoline and reject noninitial
+  fs_context owners with EOPNOTSUPP. FUSE's other inlined !USER_NS conversions
+  are not yet ported, so sandbox-created FUSE mounts must not be assigned host
+  ownership. Existing host FUSE mounts, including Android emulated storage,
+  retain native behavior. New host mounts and teardown get explicit regressions.

@@ -24,6 +24,7 @@ docker run --rm --platform linux/arm64 -v "$root:/work" \
     droidspaces-lkm-vm:local sh -eu -c '
     gcc -static -O2 -Wall -Wextra -Werror /work/tests/vm/load-module.c -o /tmp/load-module
     gcc -static -O2 -Wall -Wextra -Werror /work/tests/vm/userns-live.c -o /tmp/userns-live-test
+    gcc -static -O2 -Wall -Wextra -Werror /work/tests/vm/userns-fuse.c -o /tmp/userns-fuse-test
     gcc -static -pthread -O2 -Wall -Wextra -Werror /work/tests/vm/userns-policy.c -o /tmp/userns-policy-test
     mkdir -p /tmp/root/bin /tmp/root/dev /tmp/root/proc /tmp/root/sys /tmp/root/tmp
     chmod 1777 /tmp/root/tmp
@@ -31,6 +32,8 @@ docker run --rm --platform linux/arm64 -v "$root:/work" \
     for app in $(busybox --list); do test "$app" = busybox || ln -s busybox "/tmp/root/bin/$app"; done
     cp /tmp/load-module /tmp/root/load-module
     cp /tmp/userns-live-test /tmp/root/userns-live-test
+    cp /tmp/userns-fuse-test /tmp/root/userns-fuse-test
+    mknod /tmp/root/dev/fuse c 10 229
     cp /tmp/userns-policy-test /tmp/root/userns-policy-test
     cp /tmp/userns-policy-test /tmp/root/userns-policy-suid-host
     chmod 4755 /tmp/root/userns-policy-suid-host

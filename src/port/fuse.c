@@ -69,7 +69,16 @@ void ds_fuse_conn_init(struct fuse_conn *fc, struct fuse_mount *fm,
 	atomic64_set(&fc->attr_version, 1);
 	get_random_bytes(&fc->scramble_key, sizeof(fc->scramble_key));
 	fc->pid_ns = get_pid_ns(task_active_pid_ns(current));
+	/* Native !USER_NS callers can omit x2 entirely: it is a dead argument
+	 * in the host implementation. Preserve their initial-namespace contract.
+	 * The live fuse_get_tree wrapper rejects noninitial fs_context owners
+	 * until FUSE's remaining inline identity conversions are ported.
+	 */
+#ifdef DS_USERNS_LIVE
+	fc->user_ns = get_user_ns(&init_user_ns);
+#else
 	fc->user_ns = get_user_ns(user_ns);
+#endif
 	fc->max_pages = FUSE_DEFAULT_MAX_PAGES_PER_REQ;
 	fc->max_pages_limit = FUSE_MAX_MAX_PAGES;
 
