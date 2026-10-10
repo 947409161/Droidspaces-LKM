@@ -63,6 +63,15 @@ case "$2" in
         if [ "$FAKE_MODE" = not_ready ]; then echo N; else echo Y; fi > "$FAKE_ROOT/dev/parameters/ready"
         if [ "$FAKE_MODE" = node_errors ]; then echo 7; else echo 0; fi > "$FAKE_ROOT/dev/parameters/errors"
         ;;
+    */droidspaces_compat.ko)
+        [ "$FAKE_MODE" != compat_error ] || exit 22
+        mkdir -p "$FAKE_ROOT/compat/parameters"
+        echo 0 > "$FAKE_ROOT/compat/parameters/balanced"
+        ;;
+    */droidspaces_netfilter.ko)
+        [ "$FAKE_MODE" != netfilter_error ] || exit 23
+        mkdir -p "$FAKE_ROOT/netfilter"
+        ;;
     *) exit 21;;
 esac
 ''')
@@ -78,6 +87,8 @@ DS_BTF=$FAKE_ROOT/btf
 DS_BTF_SHA256=$FAKE_BTF_HASH
 DS_MODULE_SYS=$FAKE_ROOT/sys
 DS_DEV_SYS=$FAKE_ROOT/dev
+DS_COMPAT_SYS=$FAKE_ROOT/compat
+DS_NETFILTER_SYS=$FAKE_ROOT/netfilter
 DS_PROC_NS=$FAKE_ROOT/ns
 uname() { if [ "$1" = -m ]; then echo aarch64; else echo "$FAKE_RELEASE"; fi; }
 ds_load
@@ -93,6 +104,51 @@ ds_load
     def calls(self):
         path = self.root / 'calls'
         return path.read_text().splitlines() if path.exists() else []
+
+    def add_docker_payloads(self):
+        for name in ('droidspaces_compat', 'droidspaces_netfilter'):
+            path = self.module / 'kernel' / (name + '.ko')
+            path.write_bytes(('fake ' + name).encode())
+            with (self.module / 'SHA256SUMS').open('a') as sums:
+                sums.write(f'{hashlib.sha256(path.read_bytes()).hexdigest()}  kernel/{name}.ko\n')
+
+    def test_docker_addons_and_idempotence(self):
+        self.add_docker_payloads()
+        self.assertEqual(self.run_loader().returncode, 0)
+        self.assertIn('PID 引用修复', self.status)
+        self.assertIn('droidspaces_compat.ko', self.calls()[2])
+        self.assertIn('droidspaces_netfilter.ko', self.calls()[3])
+        self.assertEqual(self.run_loader().returncode, 0)
+        self.assertEqual(len(self.calls()), 4)
+
+    def test_incomplete_addons_fail_before_namespace_loading(self):
+        self.add_docker_payloads()
+        (self.module / 'kernel/droidspaces_netfilter.ko').unlink()
+        self.assertNotEqual(self.run_loader().returncode, 0)
+        self.assertEqual(self.calls(), [])
+
+    def test_unhashed_addon_is_not_loaded(self):
+        self.add_docker_payloads()
+        sums = self.module / 'SHA256SUMS'
+        sums.write_text(''.join(line for line in sums.read_text().splitlines(True)
+                                if 'droidspaces_compat.ko' not in line))
+        self.assertNotEqual(self.run_loader().returncode, 0)
+        self.assertEqual(self.calls(), [])
+
+    def test_vendor_mismatch_does_not_load_netfilter(self):
+        self.add_docker_payloads()
+        self.assertNotEqual(self.run_loader(mode='compat_error').returncode, 0)
+        self.assertIn('[部分加载]', self.status)
+        self.assertIn('droidspaces_compat', self.status)
+        self.assertEqual(len(self.calls()), 3)
+
+    def test_netfilter_failure_retries_only_missing_module(self):
+        self.add_docker_payloads()
+        self.assertNotEqual(self.run_loader(mode='netfilter_error').returncode, 0)
+        self.assertIn('[部分加载]', self.status)
+        self.assertEqual(self.run_loader().returncode, 0)
+        self.assertEqual(len(self.calls()), 5)
+        self.assertIn('droidspaces_netfilter', self.calls()[-1])
 
     def test_success_and_idempotence(self):
         self.assertEqual(self.run_loader().returncode, 0)

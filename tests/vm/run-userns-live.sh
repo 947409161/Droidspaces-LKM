@@ -24,6 +24,7 @@ docker run --rm --platform linux/arm64 -v "$root:/work" \
     droidspaces-lkm-vm:local sh -eu -c '
     gcc -static -O2 -Wall -Wextra -Werror /work/tests/vm/load-module.c -o /tmp/load-module
     gcc -static -O2 -Wall -Wextra -Werror /work/tests/vm/userns-live.c -o /tmp/userns-live-test
+    gcc -static -O2 -Wall -Wextra -Werror /work/tests/vm/userns-overlay.c -o /tmp/userns-overlay-test
     gcc -static -O2 -Wall -Wextra -Werror /work/tests/vm/userns-fuse.c -o /tmp/userns-fuse-test
     gcc -static -O2 -Wall -Wextra -Werror /work/tests/vm/userns-fuse-io.c -o /tmp/userns-fuse-io-test
     gcc -static -pthread -O2 -Wall -Wextra -Werror /work/tests/vm/userns-policy.c -o /tmp/userns-policy-test
@@ -33,6 +34,7 @@ docker run --rm --platform linux/arm64 -v "$root:/work" \
     for app in $(busybox --list); do test "$app" = busybox || ln -s busybox "/tmp/root/bin/$app"; done
     cp /tmp/load-module /tmp/root/load-module
     cp /tmp/userns-live-test /tmp/root/userns-live-test
+    cp /tmp/userns-overlay-test /tmp/root/userns-overlay-test
     cp /tmp/userns-fuse-test /tmp/root/userns-fuse-test
     cp /tmp/userns-fuse-io-test /tmp/root/userns-fuse-io-test
     mknod /tmp/root/dev/fuse c 10 229
@@ -117,7 +119,7 @@ docker run --rm --platform linux/arm64 -v "$root:/work" \
 tail -n 65 "$root/$log_dir/console.log"
 test "$status" = 0
 grep -q '^DS_USERNS_LIVE_VM_RESULT=0' "$root/$log_dir/console.log"
-for marker in DS_FUSE_PASS DS_FUSE_SANDBOX_MOUNT_PASS DS_FUSE_ACL_PASS DS_FUSE_RETAINED_PASS; do
+for marker in DS_FUSE_PASS DS_FUSE_SANDBOX_MOUNT_PASS DS_FUSE_ACL_PASS DS_FUSE_RETAINED_PASS DS_OVERLAY_PASS; do
     grep -q "^$marker" "$root/$log_dir/console.log"
 done
 grep -q '^DS_FUSE_IO_PASS: unprivileged' "$root/$log_dir/console.log"

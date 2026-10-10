@@ -31,6 +31,16 @@ ccflags-y += -include $(src)/src/userns/live-names.h
 LINUXINCLUDE := -I$(src)/src/userns/compat $(LINUXINCLUDE)
 endif
 ccflags-y += -I$(srctree)/fs/proc -I$(srctree)/fs -I$(srctree)
+else ifeq ($(TARGET),compat)
+obj-m := droidspaces_compat.o
+droidspaces_compat-y := src/compat/main.o
+else ifeq ($(TARGET),netfilter)
+obj-m := droidspaces_netfilter.o
+droidspaces_netfilter-y := src/netfilter/main.o src/netfilter/nat-inet.o
+include $(src)/src/netfilter/objects.mk
+# NF_TABLES itself changes struct net; keep the native definition intact.
+ccflags-y += -DCONFIG_NF_TABLES_IPV4=1 -DCONFIG_NF_TABLES_IPV6=1 -DCONFIG_NF_TABLES_INET=1
+LINUXINCLUDE := -I$(src)/src/netfilter/compat $(LINUXINCLUDE)
 else ifeq ($(TARGET),userns)
 obj-m := droidspaces_userns_test.o
 droidspaces_userns_test-y := src/userns/main.o src/userns/user_namespace.o src/userns/credentials.o src/userns/utsname.o

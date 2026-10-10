@@ -13,7 +13,7 @@ set_perm "$MODPATH/post-fs-data.sh" 0 0 0755
 set_perm "$MODPATH/bin/userns-check" 0 0 0755
 ds_payload_valid || abort '! .ko 缺失或 SHA-256 校验失败。'
 ui_print '- 作者：Shikochin'
-ui_print '- PLZ110 v0.1.4：PID / IPC + devtmpfs + Sandboxing + 沙箱 FUSE。'
+ui_print '- PLZ110 v0.1.5：PID / IPC + devtmpfs + Sandboxing + 沙箱 FUSE + Docker 防火墙扩展。'
 ui_print '- 已匹配内核版本、设备及 BTF 指纹。'
 ui_print '- 下次开机自动加载；简介区分成功、失败和部分加载。'
 ui_print '- 激活后的 .ko 必须重启才能替换或移除。'

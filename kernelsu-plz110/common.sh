@@ -6,6 +6,8 @@ DS_COMPATIBLE=/sys/firmware/devicetree/base/compatible
 DS_BTF=/sys/kernel/btf/vmlinux
 DS_MODULE_SYS=/sys/module/droidspaces_ns
 DS_DEV_SYS=/sys/module/droidspaces_devtmpfs
+DS_COMPAT_SYS=/sys/module/droidspaces_compat
+DS_NETFILTER_SYS=/sys/module/droidspaces_netfilter
 DS_PROC_NS=/proc/self/ns
 DS_KSUD=/data/adb/ksud
 [ -x "$DS_KSUD" ] || DS_KSUD=/data/adb/ksu/bin/ksud
@@ -52,7 +54,18 @@ ds_dev_active() {
     [ "$(cat "$DS_DEV_SYS/parameters/errors" 2>/dev/null)" = 0 ]
 }
 
+ds_docker_requested() {
+    [ -e "$MODDIR/kernel/droidspaces_compat.ko" ] ||
+    [ -e "$MODDIR/kernel/droidspaces_netfilter.ko" ]
+}
+
 ds_payload_valid() {
+    if ds_docker_requested; then
+        for ds_extra in droidspaces_compat droidspaces_netfilter; do
+            [ -s "$MODDIR/kernel/$ds_extra.ko" ] || return 1
+            grep -Eq "^[0-9a-f]{64}  kernel/$ds_extra[.]ko$" "$MODDIR/SHA256SUMS" || return 1
+        done
+    fi
     [ -x "$MODDIR/bin/userns-check" ] &&
     [ -s "$MODDIR/kernel/droidspaces_ns.ko" ] &&
     [ -s "$MODDIR/kernel/droidspaces_devtmpfs.ko" ] &&
@@ -64,12 +77,37 @@ ds_sandbox_available() {
     [ -r "$DS_MODULE_SYS/parameters/userns_live" ] && [ -e "$DS_PROC_NS/user" ]
 }
 
+ds_docker_load() {
+    ds_docker_requested || return 0
+    for ds_extra in droidspaces_compat droidspaces_netfilter; do
+        case "$ds_extra" in
+            droidspaces_compat) ds_extra_sys=$DS_COMPAT_SYS ;;
+            droidspaces_netfilter) ds_extra_sys=$DS_NETFILTER_SYS ;;
+        esac
+        if [ ! -d "$ds_extra_sys" ]; then
+            if [ ! -x "$DS_KSUD" ] || ! "$DS_KSUD" insmod "$MODDIR/kernel/$ds_extra.ko"; then
+                ds_status "[部分加载] namespace / devtmpfs 已激活；${ds_extra} 加载失败，详见 load.log。"
+                return 1
+            fi
+        fi
+    done
+    if [ ! -r "$DS_COMPAT_SYS/parameters/balanced" ] || [ ! -d "$DS_NETFILTER_SYS" ]; then
+        ds_status '[部分加载] Docker 扩展状态不完整；请查看 load.log 并重启。'
+        return 1
+    fi
+    return 0
+}
+
 ds_health() {
     if ! "$MODDIR/bin/userns-check"; then
         ds_status '[部分加载] PID / IPC + devtmpfs 已加载；Sandboxing 功能检查失败，详见 load.log。'
         return 1
     fi
-    ds_status '[已加载] PID / IPC + devtmpfs 正常；Sandboxing 身份映射与权限检查通过，含沙箱 FUSE 支持；更换 .ko 需重启。'
+    if ds_docker_requested; then
+        ds_status '[已加载] namespace / devtmpfs / 沙箱 FUSE 正常；PID 引用修复与 Docker 防火墙扩展已加载；更换 .ko 需重启。'
+    else
+        ds_status '[已加载] PID / IPC + devtmpfs 正常；Sandboxing 身份映射与权限检查通过，含沙箱 FUSE 支持；更换 .ko 需重启。'
+    fi
 }
 
 ds_load() {
@@ -90,7 +128,7 @@ ds_load() {
         return 1
     fi
     if ds_ns_active && ! ds_sandbox_available; then
-        ds_status '[需重启] 当前 PID / IPC 模块不含本版 Sandboxing；请重启以加载 v0.1.4。'
+        ds_status '[需重启] 当前 PID / IPC 模块不含本版 Sandboxing；请重启以加载新版本。'
         return 1
     fi
     if [ -d "$DS_DEV_SYS" ] && ! ds_dev_active; then
@@ -98,6 +136,7 @@ ds_load() {
         return 1
     fi
     if ds_ns_active && ds_dev_active; then
+        ds_docker_load || return 1
         ds_health
         return $?
     fi
@@ -123,5 +162,6 @@ ds_load() {
             return 1
         fi
     fi
+    ds_docker_load || return 1
     ds_health
 }

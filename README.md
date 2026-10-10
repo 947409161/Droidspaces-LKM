@@ -5,15 +5,16 @@
 为 Android 内核动态补充 Droidspaces 所需的 PID / IPC namespace、devtmpfs 及 Sandboxing（user namespace）能力。
 通过 KernelSU 的 `ksud insmod` 加载，无需刷写内核，设备运行时无需内核源码。
 
-v0.1.4 是 PLZ110 指定 6.12.69 内核的设备版本，提供 PID / IPC + devtmpfs +
-Sandboxing，并支持沙箱内新建普通 FUSE 挂载。已在真机 SELinux Enforcing 环境中，通过身份与权限隔离测试，以及
+v0.1.5 是 PLZ110 指定 6.12.69 内核的设备版本，提供 PID / IPC + devtmpfs +
+Sandboxing、沙箱 FUSE，以及 Docker 所需的 `xt_addrtype` / nftables 扩展。
+本版还修复厂商信号回调导致的 namespace 引用泄漏，并避免子 user namespace 的原生 OverlayFS 告警。已在真机 SELinux Enforcing 环境中，通过身份与权限隔离测试，以及
 实际 Droidspaces 容器内的 Bubblewrap 工作负载。实现和验证范围见
 [user namespace 移植状态](docs/userns-status.md)。
 
 v0.2.0 是此前发布的独立 GKI 实验版本，提供六份 PID / IPC 构建，不含
 devtmpfs；它不替代 PLZ110 专用版本。同一 KMI 不代表厂商内部 ABI 兼容。
 
-## PLZ110 v0.1.4
+## PLZ110 v0.1.5
 
 仅支持 `qcom,canoe`、ARM64、4 KiB 页面及完整内核版本：
 
@@ -21,18 +22,18 @@ devtmpfs；它不替代 PLZ110 专用版本。同一 KMI 不代表厂商内部 A
 6.12.69-android16-6-g242e1a07f878-ab15865446-4k
 ```
 
-从 [v0.1.4 Release](https://github.com/Shikochin/Droidspaces-LKM/releases/tag/v0.1.4)
-下载 `Droidspaces-LKM-KernelSU-v0.1.4-PLZ110.zip`，在 KernelSU 管理器中安装后
+从 [v0.1.5 Release](https://github.com/Shikochin/Droidspaces-LKM/releases/tag/v0.1.5)
+下载 `Droidspaces-LKM-KernelSU-v0.1.5-PLZ110.zip`，在 KernelSU 管理器中安装后
 重启。安装包使用相同的 `droidspaces_lkm` 模块 ID，可替换已安装的旧版本；
 安装和每次开机均要求设备、完整内核版本及 BTF 指纹与验证目标匹配。
 
-开机加载整合 PID / IPC / user namespace 的 `.ko` 和 devtmpfs `.ko`，
+开机依次加载 namespace、devtmpfs、厂商 PID 引用修复和 netfilter 四个 `.ko`，
 随后以普通 UID 检查真实身份映射与权限拒绝行为，简介显示实际结果：
 
 | 状态 | 含义 |
 | --- | --- |
-| `[已加载]` | PID / IPC 接口正常、devtmpfs 健康且 Sandboxing 功能检查通过 |
-| `[部分加载]` | namespace 已激活，但 devtmpfs 或 Sandboxing 功能检查失败 |
+| `[已加载]` | PID / IPC、devtmpfs 和 Sandboxing 检查通过，PID 引用修复与 netfilter 已加载 |
+| `[部分加载]` | namespace 已激活，但 devtmpfs、Sandboxing 或 Docker 扩展检查失败 |
 | `[需重启]` | 当前仍是旧 namespace 模块，需重启应用更新 |
 | `[加载失败]` | 载荷损坏、加载器失败或已有模块状态异常 |
 | `[不兼容]` / `[不支持]` | 内核指纹或设备不匹配，停止加载 |
@@ -41,8 +42,8 @@ devtmpfs；它不替代 PLZ110 专用版本。同一 KMI 不代表厂商内部 A
 检查结果；后续 devtmpfs 错误可通过其 `errors` 模块参数查看。
 已激活模块需重启才能替换或移除。
 
-Release 同时提供两个独立 `.ko` 与 `SHA256SUMS`，建议使用包含目标校验的
-完整 KernelSU ZIP。版本说明见 [v0.1.4 验证与安装](docs/releases-v0.1.4.md)。
+Release 同时提供四个独立 `.ko` 与 `SHA256SUMS`，建议使用包含目标校验的
+完整 KernelSU ZIP。版本说明见 [v0.1.5 验证与安装](docs/releases-v0.1.5.md)。
 已验证 HMA UID Fake 0.4.0+1c71b6c 和 NoMount 共存；未知入口修改会拒绝加载。
 Droidspaces 容器需启用 `--allow-sandboxing`；不会自动更改现有容器设置。
 沙箱内使用 FUSE 还需设备访问和 mount 权限；支持范围与配置见 [FUSE 适配](docs/userns-fuse.md)。
@@ -179,9 +180,10 @@ PLC110 的指定 6.6.118 内核另有 [手动测试包说明](docs/plc110-device
 
 - 使用未导出的内核接口和实验性入口替换，不保证跨厂商或跨内核构建兼容。
 - 不支持 32 位 IPC 兼容系统调用；`SHM_HUGETLB` 返回 `EOPNOTSUPP`。
-- 未覆盖完整 rootfs / systemd 启动、长期高并发、OOM 和所有 SELinux 域。
-- user namespace 请使用 PLZ110 v0.1.3；devtmpfs 包含在 PLZ110 v0.1.1 / v0.1.3 中。
-- Android 宿主 FUSE 挂载受支持；沙箱内新建 FUSE 挂载返回 `EOPNOTSUPP`。
+- 已验证指定 PLZ110 上 Debian / systemd 和 rootful Docker 的部分工作负载；未覆盖长期高并发、OOM 和所有 SELinux 域。
+- user namespace、devtmpfs 与 Docker 扩展请使用 PLZ110 专用 v0.1.5；通用 GKI v0.2.0 不包含这些扩展。
+- PLZ110 专用版本支持普通沙箱 FUSE；原生 OverlayFS 在子 user namespace 中返回 `EOPNOTSUPP`，可使用 fuse-overlayfs。
+- rootless Docker 的 seccomp / capability 限制未解决；未补入 br_netfilter，不支持关闭 Docker userland proxy 的已测路径。
 - 不补充额外 cgroup 控制器。尚未覆盖 idmapped mount、全部内联权限路径及长期高负载，
   已验证 Bubblewrap 场景不代表完整 Linux USER_NS 等价性或所有沙箱应用均兼容。
 - 原生已支持 PID namespace 的内核不属于本补丁的适用范围。

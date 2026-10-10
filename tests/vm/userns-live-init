@@ -25,6 +25,7 @@ run_tests() {
     /userns-fuse-io-test --retained || return 1
     /userns-live-test || return 1
     mount -t ext4 -o loop /filecaps.ext4 /test-ext4 || return 1
+    /userns-overlay-test || return 1
     /userns-policy-test || return 1
     umount /test-ext4 || return 1
     if [ -f /sandbox-enabled ]; then /sandbox-test || return 1; /sandbox-test --fuse || return 1; fi

@@ -22,6 +22,18 @@ struct fs_context *ds_userns_alloc_fs_context(struct file_system_type *fs_type,
 	struct fs_context *fc;
 	int ret = -ENOMEM;
 
+	/* Native OverlayFS was built with USER_NS=n. Its ownership checks and
+	 * credential conversions cannot service a child-owned superblock. Reject
+	 * this unsupported path before ovl_fill_super() hits WARN_ON; in particular,
+	 * do not relabel the context as init_user_ns to bypass the check. Runtime
+	 * probes can then select fuse-overlayfs. Initial-namespace mounts retain
+	 * the native implementation, including Docker's overlay2/snapshotter.
+	 */
+	if (purpose == FS_CONTEXT_FOR_MOUNT &&
+	    current_user_ns() != &init_user_ns &&
+	    !strcmp(fs_type->name, "overlay"))
+		return ERR_PTR(-EOPNOTSUPP);
+
 	fc = kzalloc(sizeof(struct fs_context), GFP_KERNEL_ACCOUNT);
 	if (!fc)
 		return ERR_PTR(-ENOMEM);
