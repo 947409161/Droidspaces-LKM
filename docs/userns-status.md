@@ -147,6 +147,22 @@ BTF 比较核对聚合布局及可比较的导入函数原型，不能证明所�
 已知设备额外保留字段涉及 `mm_struct`、`task_struct` 和 `files_struct`，
 没有改变本次比较的同名字段偏移或结构总大小；实验代码不读取这些设备私有字段。
 
+发布构建使用独立目录，并保留原始 DDK 载荷与设备 modinfo 适配后的载荷：
+
+```sh
+./scripts/build-ddk.sh TARGET=namespace USERNS=1 OUT=/module/out/userns-device-test -j2
+python3 scripts/abi/prepare-device-vm.py out/device/boot_b.img \
+  out/userns-device-test/droidspaces_ns.ko out/device/reference.ko \
+  out/userns-device-test/hma-chain
+./scripts/build-userns-health.sh
+python3 tests/module/test_plz110_optional_loader.py
+python3 scripts/package-plz110-sandbox.py
+```
+
+打包要求验证清单中的全部本地输入和源码哈希匹配；缺少设备输入或回归证据时拒绝打包。
+HMA 共存回归另设置 `DS_USERNS_HMA` 为同一内核 vermagic 的实际 HMA 测试载荷路径；
+此第三方载荷不随项目分发。devtmpfs 沿用 v0.1.1 的已验证二进制，重建说明见该标签。
+
 源码来源与适配说明见 [ORIGIN](../src/userns/ORIGIN)。
 如需重现已发布 v0.1.1，请使用对应标签；其打包器会拒绝本实验分支的修改后源码。
 
