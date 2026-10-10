@@ -1,7 +1,6 @@
 # Droidspaces LKM
 
-> **v0.1.3 修复了 v0.1.2 首次解锁时的 FUSE 内核崩溃。v0.1.2 Release 已撤下，
-> 请升级至 v0.1.4。**
+> AI Slop Warning，这个项目仅有这句警告是我自己写的，适用于 GKI 的 .ko 不保证可用于每个设备，**出了问题建议先问 Agent**，比问我高效很多，欢迎提交适配对应机型的 PR
 
 为 Android 内核动态补充 Droidspaces 所需的 PID / IPC namespace、devtmpfs 及 Sandboxing（user namespace）能力。
 通过 KernelSU 的 `ksud insmod` 加载，无需刷写内核，设备运行时无需内核源码。
