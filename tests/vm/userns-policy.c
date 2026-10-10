@@ -20,6 +20,8 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <linux/netlink.h>
+#include <linux/keyctl.h>
+#include <linux/mount.h>
 #include <grp.h>
 #include <linux/nsfs.h>
 #include <linux/seccomp.h>
@@ -321,6 +323,30 @@ static void netlink_policy(void)
     receive_identity(fd[1],0,0,getpid());
     close(fd[0]);close(fd[1]);
 }
+static void keyring_parent_policy(void)
+{
+    struct stat before,after;
+    CHECK(stat("/proc/self/ns/user",&before)==0);
+    long original=syscall(SYS_keyctl,KEYCTL_JOIN_SESSION_KEYRING,NULL,0,0,0);
+    CHECK(original>0);
+    int ready[2]; CHECK(pipe(ready)==0);
+    pid_t child=fork(); CHECK(child>=0);
+    if (!child) {
+        close(ready[0]);
+        long replacement=syscall(SYS_keyctl,KEYCTL_JOIN_SESSION_KEYRING,NULL,0,0,0);
+        CHECK(replacement>0 && replacement!=original);
+        CHECK(write(ready[1],&replacement,sizeof(replacement))==sizeof(replacement));
+        CHECK(syscall(SYS_keyctl,KEYCTL_SESSION_TO_PARENT,0,0,0,0)==0);
+        _exit(0);
+    }
+    close(ready[1]); long replacement;
+    CHECK(read(ready[0],&replacement,sizeof(replacement))==sizeof(replacement));
+    close(ready[0]); wait_ok(child);
+    CHECK(syscall(SYS_keyctl,KEYCTL_GET_KEYRING_ID,KEY_SPEC_SESSION_KEYRING,0,0,0)==replacement);
+    CHECK(stat("/proc/self/ns/user",&after)==0 && before.st_ino==after.st_ino);
+    CHECK(getuid()==0 && getgid()==0);
+    host_file_denied();
+}
 static void policy_case(int mode)
 {
     int ready[2],go[2]; char byte=0;
@@ -355,7 +381,15 @@ static void policy_case(int mode)
         CHECK(unshare(CLONE_NEWUTS)==0);
         CHECK(caps(0)&(UINT64_C(1)<<CAP_SYS_ADMIN));
         host_file_denied();
-        if (mode==19) {
+        if (mode==21) {
+            CHECK(unshare(CLONE_NEWNS|CLONE_NEWCGROUP)==0);
+            for (int i=0;i<8;i++) {
+                int fd=syscall(SYS_fsopen,"cgroup2",FSOPEN_CLOEXEC);
+                CHECK(fd>=0 && close(fd)==0);
+            }
+        } else if (mode==20) {
+            keyring_parent_policy();
+        } else if (mode==19) {
             netlink_policy();
         } else if (mode==18) {
             struct ucred peer; socklen_t size=sizeof(peer);
@@ -488,6 +522,73 @@ static void policy_case(int mode)
     }
     printf("DS_USERNS_POLICY_CASE=%d passed\n",mode);
 }
+struct map_writer {
+    int fd;
+    const char *map;
+    ssize_t result;
+    int error;
+    pthread_barrier_t *start;
+};
+static void *write_map_racing(void *arg)
+{
+    struct map_writer *writer=arg;
+    pthread_barrier_wait(writer->start);
+    writer->result=write(writer->fd,writer->map,strlen(writer->map));
+    writer->error=errno;
+    return NULL;
+}
+static void mapping_fd_exit_races(void)
+{
+    for (int round=0;round<32;round++) {
+        int ready[2],go[2]; char byte=0,path[100],map[200];
+        CHECK(pipe(ready)==0 && pipe(go)==0);
+        pid_t child=fork(); CHECK(child>=0);
+        if (!child) {
+            close(ready[0]);close(go[1]);
+            CHECK(setgid(1000)==0 && setuid(1000)==0);
+            CHECK(prctl(PR_SET_DUMPABLE,1)==0 && unshare(CLONE_NEWUSER)==0);
+            CHECK(write(ready[1],&byte,1)==1 && read(go[0],&byte,1)==1);
+            _exit(0);
+        }
+        close(ready[1]);close(go[0]);
+        CHECK(read(ready[0],&byte,1)==1);close(ready[0]);
+        snprintf(path,sizeof(path),"/proc/%d/uid_map",child);
+        int fd[2]={open(path,O_WRONLY),open(path,O_WRONLY)};
+        int view=open(path,O_RDONLY);
+        snprintf(path,sizeof(path),"/proc/%d/gid_map",child);
+        int gid=open(path,O_RDWR);
+        snprintf(path,sizeof(path),"/proc/%d/ns/user",child);
+        int ns=open(path,O_RDONLY);
+        CHECK(fd[0]>=0 && fd[1]>=0 && view>=0 && gid>=0 && ns>=0);
+        pthread_barrier_t start; pthread_t threads[2];
+        CHECK(pthread_barrier_init(&start,NULL,3)==0);
+        struct map_writer writers[2]={
+            {.fd=fd[0],.map="0 1000 1\n",.start=&start},
+            {.fd=fd[1],.map="0 1001 1\n",.start=&start},
+        };
+        for (int i=0;i<2;i++) CHECK(pthread_create(&threads[i],NULL,write_map_racing,&writers[i])==0);
+        pthread_barrier_wait(&start);
+        CHECK(write(go[1],&byte,1)==1);close(go[1]);
+        wait_ok(child);
+        for (int i=0;i<2;i++) CHECK(pthread_join(threads[i],NULL)==0);
+        CHECK(pthread_barrier_destroy(&start)==0);
+        int winner=writers[0].result>0 ? 0 : 1;
+        CHECK(writers[winner].result==(ssize_t)strlen(writers[winner].map));
+        CHECK(writers[1-winner].result==-1 && writers[1-winner].error==EPERM);
+        ssize_t size=read(view,map,sizeof(map)-1); CHECK(size>0); map[size]=0;
+        unsigned int inside,outside,length;
+        CHECK(sscanf(map,"%u %u %u",&inside,&outside,&length)==3);
+        CHECK(inside==0 && outside==1000u+(unsigned)winner && length==1);
+        /* Open mapping files retain the namespace after its last task exits. */
+        CHECK(write(gid,"0 1000 1\n",9)==9 && lseek(gid,0,SEEK_SET)==0);
+        size=read(gid,map,sizeof(map)-1);CHECK(size>0);map[size]=0;
+        CHECK(sscanf(map,"%u %u %u",&inside,&outside,&length)==3);
+        CHECK(inside==0 && outside==1000 && length==1);
+        uid_t owner; CHECK(ioctl(ns,NS_GET_OWNER_UID,&owner)==0 && owner==1000);
+        close(fd[0]);close(fd[1]);close(view);close(gid);close(ns);
+    }
+    puts("DS_USERNS_MAPPING_RACE_PASS: 32 competing map writes, task exits and retained mapping FDs");
+}
 int main(int argc,char **argv)
 {
     if (argc==2) {
@@ -501,8 +602,9 @@ int main(int argc,char **argv)
         } else after_exec(argv[1]);
         return 0;
     }
-    for (int i=0;i<20;i++) policy_case(i);
+    for (int i=0;i<22;i++) policy_case(i);
     for (int i=0;i<8;i++) policy_case(15);
+    mapping_fd_exit_races();
     puts("DS_USERNS_POLICY_PASS: mapped privilege drop, effective/fs UID, exec, keepcaps, unmapped/mapped set-ID, no-new-privs, mm ownership, thread exec, setns, VFS, quotas, filecaps and retained namespace owners");
     return 0;
 }

@@ -5,6 +5,7 @@
 #include <linux/fs.h>
 #include <linux/sockptr.h>
 #include <linux/fs_context.h>
+void ds_userns_key_change_session_keyring(struct callback_head *);
 void ds_userns_put_cred_rcu(struct rcu_head *rcu);
 int ds_userns_proc_prepare(void);
 void ds_userns_proc_cleanup(void);
@@ -54,6 +55,7 @@ struct cgroup_namespace *ds_userns_copy_cgroup_ns(unsigned long, struct user_nam
 void ds_userns_free_cgroup_ns(struct cgroup_namespace *);
 struct time_namespace *ds_userns_copy_time_ns(unsigned long, struct user_namespace *, struct time_namespace *);
 void ds_userns_free_time_ns(struct time_namespace *);
+int ds_userns_cgroup_init_fs_context(struct fs_context *);
 int ds_userns_sysfs_init_fs_context(struct fs_context *);
 struct nsset;
 struct nsproxy;

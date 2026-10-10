@@ -21,7 +21,7 @@
 | 路径 | 实现 |
 | --- | --- |
 | 核心 | 原生 user namespace 创建/销毁、UID/GID/project ID 映射、写入权限、setgroups、嵌套及 namespace operations |
-| 凭据 | prepare/copy/kernel credentials、释放入口和 RCU 回调；共享原生 cred slab，保留 LSM、key、group、user 和 ucount 处理 |
+| 凭据 | prepare/copy/kernel credentials、释放入口和 RCU 回调；共享原生 cred slab，保留 LSM、key、group、user 和 ucount 处理；session keyring 替换回调保留父任务 namespace |
 | 资源计数 | 共享原生 ucounts 表与锁，恢复 namespace 引用及普通、rlimit 计数释放路径 |
 | 任务与 procfs | clone/unshare/setns 的移植入口；真实 `/proc/<pid>/{uid_map,gid_map,projid_map,setgroups}`，保留设备原有目录表项 |
 | 身份系统调用 | UID/GID 读取与修改、res/fs ID、补充组的映射和 setgroups 策略 |
@@ -32,7 +32,7 @@
 | 文件属性 | arm64 stat/statx 和 proc status 的身份转换，proc status 按打开文件时的 namespace 显示身份 |
 | VFS 权限 | chown、access、chroot、inode capability 的映射及权限检查 |
 | namespace 配额 | 共享原生 sysctl 表，恢复按当前 user namespace 查找与可见性 |
-| cgroup/time/sysfs | cgroup/time 所有者引用和释放、time 的内联释放调用者；sysfs 上下文归属及网络设备属主 |
+| cgroup/time/sysfs | cgroup/time 所有者引用和释放、cgroup fs_context 所有者转移、time 的内联释放调用者；sysfs 上下文归属及网络设备属主 |
 | nsfs | NS_GET_USERNS、NS_GET_OWNER_UID 的权限与映射；其他 ioctl 保留原生入口 |
 | 能力转换 | namespace root 的 setuid/FSUID 降权、exec 能力计算和文件能力读写转换，保留原生安全位与 LSM 分派 |
 | Socket 凭据 | Unix stream/datagram/seqpacket 和 Netlink 的 SCM_CREDENTIALS、SO_PEERCRED、SO_PEERGROUPS 映射；保留凭据校验与 FD 传递语义 |
@@ -81,6 +81,9 @@ live VM 测试以真实非特权 UID 1000 运行，不通过伪造检测结果�
 - Unix socket 三种协议的自动/显式凭据及补充组映射；拒绝未映射身份和降权后的身份伪造。
 - Unix socket 跨 namespace 双向传递：沙箱看到宿主 root 为 overflow ID，宿主看到沙箱真实 UID 1000。
 - SCM_RIGHTS 的 MSG_PEEK、MSG_CMSG_CLOEXEC 和控制缓冲截断处理；Netlink 对端凭据映射。
+- 子进程替换父任务 session keyring 后，父任务保留原 user namespace，宿主 root 文件仍不可访问。
+- cgroup2 fsopen/close 反复打开关闭后释放 namespace 引用。
+- 32 轮并发映射写入和进程退出：只允许一个写入者成功，已打开映射 FD 在任务退出后仍有效，关闭后引用归零。
 - no_new_privs 下的 seccomp 过滤器生效，且不能取消 no_new_privs。
 - Debian arm64 Bubblewrap 0.8.0 的基本工作负载：独立 user/PID/IPC/UTS、只读 /bin、
   proc、/dev、私有 /tmp；宿主测试文件不可见。
@@ -90,7 +93,7 @@ live VM 测试以真实非特权 UID 1000 运行，不通过伪造检测结果�
   在容器内运行上述三种 Bubblewrap 配置，停止容器后 namespace 活跃计数归零。
 - 测试结束后 user namespace 活跃计数必须为零，控制台不得出现 BUG、WARNING、Oops 或 panic。
 
-固定 GKI 和 PLZ110 原始 boot image 均用于 QEMU 回归；策略套件包含 20 个场景。
+固定 GKI 和 PLZ110 原始 boot image 均用于 QEMU 回归；策略套件包含 22 个场景，另有 32 轮映射 FD 与退出竞态回归。
 Bubblewrap 测试先将 VM 的初始 rootfs 切换为普通 tmpfs 根；初始 rootfs 本身
 不支持 pivot_root，这一步不改变内核或绕过沙箱权限。VM 使用 `selinux=0`；
 这些结果不涵盖手机上的 Android SELinux 策略，也不等于完整 Sandbox 隔离证明。
@@ -99,7 +102,7 @@ Bubblewrap 测试先将 VM 的初始 rootfs 切换为普通 tmpfs 根；初始 r
 ## 发布前仍需完成
 
 - idmapped mount、更多降权/exec/文件能力组合。
-- 映射 FD 跨进程和退出竞态的压力回归。
+- 映射 FD 权限降级后的跨进程传递及更长期压力回归。
 - 其他 procfs/VFS/LSM、keyring 和网络路径中的内联 USER_NS 假设。
 - 扩展实际容器应用、网络与 namespace 长期存活回归。
 - 完整沙箱程序及负向隔离测试；不能仅凭 Droidspaces 的功能探测通过发布。
@@ -130,7 +133,7 @@ VM 输入，再设置 `DS_USERNS_KERNEL`、`DS_USERNS_MODULE`、`DS_USERNS_LOG_D
 修改 vermagic 只为 VM 加载匹配，不代替 ABI 核验。
 
 本地 live 证据位于 `out/userns-live/validation.json`、`device-abi.json` 和
-`socket-netlink-vm/console.log`、`socket-netlink-device-vm/console.log`。验证清单记录测试源码、二进制、内核与日志哈希。
+`keyring-cgroup-fixed-vm/console.log`、`keyring-cgroup-fixed-device-vm/console.log`。验证清单记录测试源码、二进制、内核与日志哈希。
 上述日志也包含实际容器内的 Bubblewrap 回归；
 Droidspaces 源码提交、文件哈希、工具包版本及静态二进制记录在 `droidspaces-runtime/`。
 BTF 比较核对聚合布局及可比较的导入函数原型，不能证明所有内联语义相容。
