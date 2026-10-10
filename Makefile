@@ -17,6 +17,9 @@ droidspaces_ns-y := \
 ifneq ($(GKI_ANDROID),)
 ccflags-y += -DDS_GKI_ANDROID='"$(GKI_ANDROID)"' -DDS_GKI_VERSION='"$(GKI_VERSION)"'
 endif
+ifeq ($(MEIZU21NOTE),1)
+ccflags-y += -DDS_MEIZU21NOTE_515119=1
+endif
 # Do not enable CONFIG_SYSVIPC: that would change the host task_struct layout.
 ccflags-y += -DCONFIG_PID_NS=1 -DCONFIG_IPC_NS=1 -DCONFIG_POSIX_MQUEUE=1
 ccflags-y += -DCONFIG_POSIX_MQUEUE_SYSCTL=1 -DCONFIG_SYSVIPC_SYSCTL=1

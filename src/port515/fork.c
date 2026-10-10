@@ -286,6 +286,22 @@ static int unshare_fs(unsigned long unshare_flags, struct fs_struct **new_fsp)
 	return 0;
 }
 
+#ifdef DS_MEIZU21NOTE_515119
+static __nocfi struct files_struct *ds_dup_fd_meizu(struct files_struct *oldf)
+	{
+		/*
+		 * This device backports the three-argument dup_fd() ABI to 5.15.
+		 * Its max_fds value bounds the copied descriptor table; an
+		 * unshare must preserve every open descriptor, as in fork.c.
+		 */
+		typedef struct files_struct *(*ds_dup_fd_fn)(struct files_struct *,
+			unsigned int, int *);
+		int error = -ENOMEM;
+		struct files_struct *result = ((ds_dup_fd_fn)dup_fd)(oldf, ~0U, &error);
+		return result ? result : ERR_PTR(error);
+	}
+#endif
+
 /*
  * Unshare file descriptor table if it is being shared
  */
@@ -295,7 +311,11 @@ static int unshare_fd(unsigned long unshare_flags, struct files_struct **new_fdp
 
 	if ((unshare_flags & CLONE_FILES) &&
 	    (fd && atomic_read(&fd->count) > 1)) {
+#ifdef DS_MEIZU21NOTE_515119
+	fd = ds_dup_fd_meizu(fd);
+#else
 		fd = dup_fd(fd, NULL);
+#endif
 		if (IS_ERR(fd))
 			return PTR_ERR(fd);
 		*new_fdp = fd;
