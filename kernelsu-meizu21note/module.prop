@@ -1,6 +1,6 @@
 id=droidspaces_lkm_meizu21note
 name=Droidspaces LKM for Meizu 21 Note
-version=v0.2.0-m21n1
-versionCode=201
+version=v0.2.1-m21n1
+versionCode=202
 author=Shikochin
 description=[待加载] Meizu 21 Note / 5.15.119 专用 PID / IPC namespace 模块。
