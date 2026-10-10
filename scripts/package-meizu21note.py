@@ -50,7 +50,7 @@ def audit_device():
         'fuse_conn': {'no_poll', 'big_writes', 'dont_mask', 'no_flock',
                       'no_fallocate', 'no_rename2', 'auto_inval_data',
                       'explicit_inval_data', 'do_readdirplus', 'readdirplus_auto',
-                      'async_dio', 'no_lseek', 'posix_acl', 'default_permissions',
+                      'async_dio', 'no_lseek', 'posix_acl', 'default_permissions', 'init_security',
                       'allow_other', 'no_copy_file_range', 'destroy', 'delete_stale',
                       'no_control', 'no_force_umount', 'auto_submounts', 'passthrough',
                       'sync_fs', 'no_daemon'},
@@ -77,6 +77,11 @@ def audit_device():
             actual[2][1] == ['int', 4, 32] and actual[2][2][0] == 'ptr' and
             actual[2][2][1] == ['int', 4, 16777248],
             f'unexpected device dup_fd prototype: {actual}')
+    comparable = imports & baseline_functions.keys() & device_functions.keys()
+    prototype_differences = {name for name in comparable
+                             if baseline_functions[name] != device_functions[name]}
+    require(prototype_differences == {'dup_fd'},
+            f'unexpected imported function prototype differences: {sorted(prototype_differences)}')
     diff = layouts
     return dict(device_release=RELEASE, device_btf_sha256=BTF_SHA,
                 module_sha256=sha((OUT/'droidspaces_ns.ko').read_bytes()),
@@ -84,6 +89,7 @@ def audit_device():
                 matching_aggregates=layouts['matching_aggregates'],
                 expected_layout_differences=diff['differences'],
                 device_dup_fd=actual, baseline_dup_fd=baseline_functions['dup_fd'],
+                prototype_differences=sorted(prototype_differences),
                 fuse_fields_accessed=sorted(fuse_used))
 
 
