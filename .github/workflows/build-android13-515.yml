@@ -32,6 +32,8 @@ jobs:
         run: sudo "$(command -v python3)" scripts/build-gki.py 5.15 -j2
       - name: Prepare ABI comparison inputs
         run: sudo "$(command -v python3)" scripts/prepare-gki-vm.py 5.15
+      - name: Make build artifacts readable to the uploader
+        run: sudo chmod -R a+rX out/gki/android13-5.15
       - uses: actions/upload-artifact@v4
         with:
           name: android13-5.15-abi-inputs
