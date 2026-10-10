@@ -1,6 +1,6 @@
 id=droidspaces_lkm
 name=Droidspaces LKM (PLZ110)
-version=v0.1.3
-versionCode=5
+version=v0.1.4
+versionCode=6
 author=Shikochin
-description=[待加载] PLZ110 指定 6.12.69 内核：PID / IPC + devtmpfs + Sandboxing；开机后检查真实功能并更新状态。
+description=[待加载] PLZ110 指定 6.12.69 内核：PID / IPC + devtmpfs + Sandboxing + 沙箱 FUSE；开机后检查真实功能并更新状态。

@@ -25,6 +25,7 @@ docker run --rm --platform linux/arm64 -v "$root:/work" \
     gcc -static -O2 -Wall -Wextra -Werror /work/tests/vm/load-module.c -o /tmp/load-module
     gcc -static -O2 -Wall -Wextra -Werror /work/tests/vm/userns-live.c -o /tmp/userns-live-test
     gcc -static -O2 -Wall -Wextra -Werror /work/tests/vm/userns-fuse.c -o /tmp/userns-fuse-test
+    gcc -static -O2 -Wall -Wextra -Werror /work/tests/vm/userns-fuse-io.c -o /tmp/userns-fuse-io-test
     gcc -static -pthread -O2 -Wall -Wextra -Werror /work/tests/vm/userns-policy.c -o /tmp/userns-policy-test
     mkdir -p /tmp/root/bin /tmp/root/dev /tmp/root/proc /tmp/root/sys /tmp/root/tmp
     chmod 1777 /tmp/root/tmp
@@ -33,7 +34,9 @@ docker run --rm --platform linux/arm64 -v "$root:/work" \
     cp /tmp/load-module /tmp/root/load-module
     cp /tmp/userns-live-test /tmp/root/userns-live-test
     cp /tmp/userns-fuse-test /tmp/root/userns-fuse-test
+    cp /tmp/userns-fuse-io-test /tmp/root/userns-fuse-io-test
     mknod /tmp/root/dev/fuse c 10 229
+    chmod 666 /tmp/root/dev/fuse
     cp /tmp/userns-policy-test /tmp/root/userns-policy-test
     cp /tmp/userns-policy-test /tmp/root/userns-policy-suid-host
     chmod 4755 /tmp/root/userns-policy-suid-host
@@ -81,6 +84,7 @@ docker run --rm --platform linux/arm64 -v "$root:/work" \
         cp -a /tmp/root/bin/. /tmp/root/container/bin/
         cp -a /work/out/userns-live/sandbox-runtime/root/. /tmp/root/container/
         cp /tmp/root/sandbox-test /tmp/root/container/sandbox-test
+        cp /tmp/root/userns-fuse-io-test /tmp/root/container/userns-fuse-io-test
         cp /work/tests/vm/droidspaces-sandbox-init /tmp/root/container/sbin/init
         chmod +x /tmp/root/container/sbin/init
         chmod 1777 /tmp/root/container/tmp
@@ -113,10 +117,16 @@ docker run --rm --platform linux/arm64 -v "$root:/work" \
 tail -n 65 "$root/$log_dir/console.log"
 test "$status" = 0
 grep -q '^DS_USERNS_LIVE_VM_RESULT=0' "$root/$log_dir/console.log"
+for marker in DS_FUSE_PASS DS_FUSE_SANDBOX_MOUNT_PASS DS_FUSE_ACL_PASS DS_FUSE_RETAINED_PASS; do
+    grep -q "^$marker" "$root/$log_dir/console.log"
+done
+grep -q '^DS_FUSE_IO_PASS: unprivileged' "$root/$log_dir/console.log"
+grep -q '^DS_FUSE_IO_PASS: mapped-range' "$root/$log_dir/console.log"
 grep -q 'DS_USERNS_POLICY_PASS:' "$root/$log_dir/console.log"
 grep -q 'DS_USERNS_LIVE_PASS:' "$root/$log_dir/console.log"
 ! grep -Eq 'BUG:|WARNING:|Oops|Kernel panic' "$root/$log_dir/console.log"
 if [ "${DS_USERNS_SANDBOX:-0}" != 0 ]; then
+    grep -q "^DS_FUSE_BUBBLEWRAP_PASS" "$root/$log_dir/console.log"
     grep -q 'DS_USERNS_SANDBOX_PASS:' "$root/$log_dir/console.log"
 fi
 if [ "${DS_USERNS_SANDBOX:-0}" = all ]; then

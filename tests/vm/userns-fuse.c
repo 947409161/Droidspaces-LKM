@@ -38,18 +38,11 @@ int main(int argc, char **argv) {
     snprintf(options,sizeof(options),"fd=%d,rootmode=40000,user_id=0,group_id=0",fd);
     puts("DS_FUSE_MOUNT_BEGIN");
     int result = mount("ds-test","/fuse-test","fuse",MS_NOSUID|MS_NODEV,options);
-    if (sandbox) {
-        CHECK(result == -1 && errno == EOPNOTSUPP);
-        CHECK(!close(fd));
-        CHECK(!rmdir("/fuse-test"));
-        puts("DS_FUSE_SANDBOX_REJECT_PASS");
-        return 0;
-    }
     CHECK(!result);
     puts("DS_FUSE_MOUNT_OK");
     CHECK(!close(fd));
     CHECK(!umount2("/fuse-test",MNT_DETACH));
     CHECK(!rmdir("/fuse-test"));
-    puts("DS_FUSE_PASS");
+    puts(sandbox ? "DS_FUSE_SANDBOX_MOUNT_PASS" : "DS_FUSE_PASS");
     return 0;
 }

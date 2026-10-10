@@ -13,6 +13,9 @@ cleanup() {
 trap cleanup EXIT
 /userns-fuse-test
 /userns-fuse-test --sandbox
+/userns-fuse-io-test
+/userns-fuse-io-test --mapped
+/userns-fuse-io-test --retained
 /userns-live-test
 loop_device=$(losetup -f)
 # Android can reserve multiple minor numbers per loop device for partitions.
@@ -27,6 +30,7 @@ umount /test-ext4
 losetup -d "$loop_device"
 loop_device=
 /sandbox-test
+/sandbox-test --fuse
 /sandbox-test --all
 host_limit=$(cat /proc/sys/user/max_user_namespaces)
 /sandbox-test --disable-userns

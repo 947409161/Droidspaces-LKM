@@ -20,11 +20,14 @@ run_tests() {
     /load-module /namespaces.ko activate=1 || return 1
     /userns-fuse-test || return 1
     /userns-fuse-test --sandbox || return 1
+    /userns-fuse-io-test || return 1
+    /userns-fuse-io-test --mapped || return 1
+    /userns-fuse-io-test --retained || return 1
     /userns-live-test || return 1
     mount -t ext4 -o loop /filecaps.ext4 /test-ext4 || return 1
     /userns-policy-test || return 1
     umount /test-ext4 || return 1
-    if [ -f /sandbox-enabled ]; then /sandbox-test || return 1; fi
+    if [ -f /sandbox-enabled ]; then /sandbox-test || return 1; /sandbox-test --fuse || return 1; fi
     if [ -f /sandbox-all-enabled ]; then
         /sandbox-test --all || return 1
         host_limit=$(cat /proc/sys/user/max_user_namespaces)

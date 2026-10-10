@@ -19,6 +19,9 @@
 #include "ipc-backend.h"
 #ifdef DS_USERNS_LIVE
 #include "../userns/live.h"
+#include "../userns/live-fuse.h"
+extern u32 ds_userns_fuse_simple_request_original[];
+extern u32 ds_userns_fuse_do_set_acl_original[], ds_userns_fuse_do_get_acl_original[];
 extern u32 ds_userns_mm_init_original[], ds_userns_ns_ioctl_original[], ds_userns_sk_getsockopt_original[], ds_userns_fuse_get_tree_original[];
 #include <linux/user_namespace.h>
 #include <linux/utsname.h>
@@ -217,6 +220,24 @@ struct ds_hook {
 static struct ds_hook hooks[] = {
 #ifdef DS_USERNS_LIVE
 	HOOK_ORIGINAL("fuse_get_tree", ds_userns_fuse_get_tree, ds_userns_fuse_get_tree_original),
+	HOOK_ORIGINAL("__fuse_simple_request", ds_userns_fuse_simple_request, ds_userns_fuse_simple_request_original),
+	HOOK("fuse_get_req", ds_userns_fuse_get_req),
+	HOOK("fuse_parse_param", ds_userns_fuse_parse_param),
+	HOOK("fuse_show_options", ds_userns_fuse_show_options),
+	HOOK("fuse_change_attributes_common", ds_userns_fuse_change_attributes_common),
+	HOOK("fuse_fillattr", ds_userns_fuse_fillattr),
+	HOOK("fuse_allow_current_process", ds_userns_fuse_allow_current_process),
+	HOOK("fuse_do_setattr", ds_userns_fuse_do_setattr),
+	HOOK("fuse_get_acl", ds_userns_fuse_get_acl),
+	HOOK("fuse_get_inode_acl", ds_userns_fuse_get_inode_acl),
+	HOOK("fuse_set_acl", ds_userns_fuse_set_acl),
+	HOOK("get_create_ext", ds_userns_fuse_get_create_ext),
+	HOOK("fuse_permission", ds_userns_fuse_permission),
+	HOOK("fuse_setattr", ds_userns_fuse_setattr),
+	HOOK("fuse_getattr", ds_userns_fuse_getattr),
+	HOOK("fuse_update_get_attr", ds_userns_fuse_update_get_attr),
+	HOOK_ORIGINAL("do_set_acl", ds_userns_fuse_do_set_acl, ds_userns_fuse_do_set_acl_original),
+	HOOK_ORIGINAL("do_get_acl", ds_userns_fuse_do_get_acl, ds_userns_fuse_do_get_acl_original),
 	HOOK_ORIGINAL("sk_getsockopt", ds_userns_sk_getsockopt, ds_userns_sk_getsockopt_original),
 	HOOK("netlink_recvmsg", ds_userns_netlink_recvmsg),
 	HOOK("__scm_send", ds_userns_scm_send),

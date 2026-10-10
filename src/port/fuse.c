@@ -71,8 +71,8 @@ void ds_fuse_conn_init(struct fuse_conn *fc, struct fuse_mount *fm,
 	fc->pid_ns = get_pid_ns(task_active_pid_ns(current));
 	/* Native !USER_NS callers can omit x2 entirely: it is a dead argument
 	 * in the host implementation. Preserve their initial-namespace contract.
-	 * The live fuse_get_tree wrapper rejects noninitial fs_context owners
-	 * until FUSE's remaining inline identity conversions are ported.
+	 * The ported fuse_get_tree explicitly installs the retained owner for
+	 * child connections after this initializer returns.
 	 */
 #ifdef DS_USERNS_LIVE
 	fc->user_ns = get_user_ns(&init_user_ns);

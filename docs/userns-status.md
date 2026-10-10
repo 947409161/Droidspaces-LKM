@@ -1,13 +1,15 @@
 # PLZ110 user namespace 移植状态
 
+> v0.1.4 已支持沙箱内普通 FUSE 挂载，通过两颗内核的 QEMU 和真机开机、首次解锁及实际读写回归，见 [FUSE 适配记录](userns-fuse.md)。
+>
 > v0.1.3 已修复首次解锁时的 FUSE 崩溃，并通过真机开机和首次解锁验证。
 > v0.1.2 Release 已撤下；[原因与修正](v0.1.2-boot-failure.md)。
 
-v0.1.3 在 PLZ110 当前内核上通过纯 LKM 提供 Droidspaces Sandboxing。
+v0.1.4 在 PLZ110 当前内核上通过纯 LKM 提供 Droidspaces Sandboxing。
 已在真机 SELinux Enforcing 下验证 UID/GID 映射、权限拒绝、生命周期和实际
 Droidspaces 容器内的三种 Bubblewrap 配置。没有刷写内核，也没有修改 Droidspaces 检测。
 本版本仍限定记录的设备与内核；完整 Linux USER_NS 等价性不在已验证范围内。
-安装、产物及限制见 [v0.1.3 发布说明](releases-v0.1.3.md)。
+安装、产物及限制见 [v0.1.4 发布说明](releases-v0.1.4.md)。
 
 ## 两种测试目标
 
@@ -19,7 +21,7 @@ Droidspaces 容器内的三种 Bubblewrap 配置。没有刷写内核，也没�
 和已有 PID/IPC 移植整合。此目标安装原生函数入口及系统调用替换，接管真实任务，
 激活后固定在内核中直至重启。初始化在修改代码前检查目标内核及函数入口；
 默认拒绝非 `linux,dummy-virt` 机器。手动测试例外仅限记录的完整内核版本及
-`qcom,canoe`，同时要求 `userns_device_test=1`；v0.1.3 安装包显式传入此参数，并核对完整 BTF 指纹与载荷 SHA256。
+`qcom,canoe`，同时要求 `userns_device_test=1`；v0.1.4 安装包显式传入此参数，并核对完整 BTF 指纹与载荷 SHA256。
 
 ## 已接入的实现
 
@@ -41,6 +43,7 @@ Droidspaces 容器内的三种 Bubblewrap 配置。没有刷写内核，也没�
 | nsfs | NS_GET_USERNS、NS_GET_OWNER_UID 的权限与映射；其他 ioctl 保留原生入口 |
 | 能力转换 | namespace root 的 setuid/FSUID 降权、exec 能力计算和文件能力读写转换，保留原生安全位与 LSM 分派 |
 | Socket 凭据 | Unix stream/datagram/seqpacket 和 Netlink 的 SCM_CREDENTIALS、SO_PEERCRED、SO_PEERGROUPS 映射；保留凭据校验与 FD 传递语义 |
+| FUSE | 沙箱挂载与连接引用、请求及文件属主映射、权限和 POSIX ACL；保留宿主原生初始化约定，见 [适配记录](userns-fuse.md) |
 | exec 与 mm | 恢复未映射 setuid/setgid 拒绝、would_dump、mm 所有者与释放；保留原生 mm 初始化 |
 
 现存原生对象没有获取过初始 user namespace 的引用，因此 live 构建将
@@ -112,7 +115,8 @@ Bubblewrap 测试先将 VM 的初始 rootfs 切换为普通 tmpfs 根；初始 r
 两颗内核的 QEMU 均预加载实际 HMA 载荷并通过完整回归；真机保留 HMA 原有规则
 及 NoMount，全部策略测试与实际容器测试通过。不支持任意第三方跳板形状。
 
-沙箱内新建 FUSE 挂载明确返回 `EOPNOTSUPP`；Android 宿主 FUSE 保留原生所有权。
+沙箱内支持普通 FUSE 挂载、真实 daemon 读写及 POSIX ACL，Android 宿主 FUSE 保留原生所有权。
+沙箱内不支持 FUSE-BPF backing、no_daemon、fuseblk、passthrough 和 idmapped FUSE mount。
 
 仍未覆盖：idmapped mount；更多降权、exec 和文件能力组合；映射 FD 权限降级后的
 跨进程传递；其他 procfs/VFS/LSM/keyring/网络内联路径；长期高负载和更多实际应用。
@@ -142,8 +146,8 @@ DS_USERNS_DROIDSPACES=1 DS_USERNS_SANDBOX=all DS_USERNS_LOG_DIR=out/userns-live/
 VM 输入，再设置 `DS_USERNS_KERNEL`、`DS_USERNS_MODULE`、`DS_USERNS_LOG_DIR`。
 修改 vermagic 只为 VM 加载匹配，不代替 ABI 核验。
 
-v0.1.3 的验证清单位于 `build/plz110-0.1.3.json`，打包后的 `validation.json`
-绑定源码、内核、二进制及日志哈希。本地完整日志位于 `out/userns-fuse-fix/`：
+v0.1.4 的验证清单位于 `build/plz110-0.1.4.json`，打包后的 `validation.json`
+绑定源码、内核、二进制及日志哈希。本地完整日志位于 `out/userns-fuse-mount/`：
 `gki-vm/console.log`、`plz110-vm/console.log`、`device-regression.log`、
 `device-devtmpfs.log` 及 `boot/`。真机记录包含实际开机加载、首次密码解锁、
 Android 模拟存储 FUSE 挂载、文件管理器使用及完整回归。
@@ -154,10 +158,10 @@ BTF 比较核对聚合布局及可比较的导入函数原型，不能证明所�
 发布构建使用独立目录，并保留原始 DDK 载荷与设备 modinfo 适配后的载荷：
 
 ```sh
-./scripts/build-ddk.sh TARGET=namespace USERNS=1 OUT=/module/out/userns-fuse-fix -j2
+./scripts/build-ddk.sh TARGET=namespace USERNS=1 OUT=/module/out/userns-fuse-mount -j2
 python3 scripts/abi/prepare-device-vm.py out/device/boot_b.img \
-  out/userns-fuse-fix/droidspaces_ns.ko out/device/reference.ko \
-  out/userns-fuse-fix/device
+  out/userns-fuse-mount/droidspaces_ns.ko out/device/reference.ko \
+  out/userns-fuse-mount/device
 ./scripts/build-userns-health.sh
 python3 tests/module/test_plz110_optional_loader.py
 python3 scripts/package-plz110-sandbox.py
@@ -184,5 +188,5 @@ mount/network namespace，在专用 tmpfs 中解包测试环境，pivot_root 后
 `--test` 在相同环境中运行身份/权限/生命周期、Bubblewrap 和专用 Droidspaces 容器测试。
 VM 导出的运行环境排除会关机的 `/init` 和 VM 模块加载器。
 
-真机已加载 v0.1.3 对应二进制并通过完整测试。替换固定在内核中的模块仍需要重启。
+真机已加载 v0.1.4 对应二进制并通过完整测试。替换固定在内核中的模块仍需要重启。
 测试用 loop 设备号从 sysfs 读取，兼容设备为分区预留的 minor 间隔。

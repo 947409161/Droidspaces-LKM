@@ -21,6 +21,14 @@ int main(int argc,char **argv)
         perror("sandbox drop host privileges");
         return 1;
     }
+    if (argc>1 && !strcmp(argv[1],"--fuse")) {
+        execl("/usr/bin/bwrap","bwrap","--unshare-all","--uid","0","--gid","0",
+            "--cap-add","CAP_SYS_ADMIN","--ro-bind","/bin","/bin",
+            "--ro-bind","/userns-fuse-io-test","/fuse-io-test",
+            "--proc","/proc","--dev","/dev","--dev-bind","/dev/fuse","/dev/fuse",
+            "--tmpfs","/tmp","--chdir","/","--","/fuse-io-test","--inside",NULL);
+        perror("exec bubblewrap FUSE"); return 1;
+    }
     execl("/usr/bin/bwrap","bwrap",
         argc>1 ? "--unshare-all" : "--unshare-user", "--unshare-user",
         disabled ? "--disable-userns" : "--unshare-user",

@@ -69,7 +69,7 @@ ds_health() {
         ds_status '[部分加载] PID / IPC + devtmpfs 已加载；Sandboxing 功能检查失败，详见 load.log。'
         return 1
     fi
-    ds_status '[已加载] PID / IPC + devtmpfs 正常；Sandboxing 身份映射与权限检查通过；更换 .ko 需重启。'
+    ds_status '[已加载] PID / IPC + devtmpfs 正常；Sandboxing 身份映射与权限检查通过，含沙箱 FUSE 支持；更换 .ko 需重启。'
 }
 
 ds_load() {
@@ -90,7 +90,7 @@ ds_load() {
         return 1
     fi
     if ds_ns_active && ! ds_sandbox_available; then
-        ds_status '[需重启] 当前 PID / IPC 模块不含本版 Sandboxing；请重启以加载 v0.1.3。'
+        ds_status '[需重启] 当前 PID / IPC 模块不含本版 Sandboxing；请重启以加载 v0.1.4。'
         return 1
     fi
     if [ -d "$DS_DEV_SYS" ] && ! ds_dev_active; then

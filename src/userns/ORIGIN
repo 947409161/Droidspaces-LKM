@@ -125,7 +125,7 @@ PLZ110 hardware coexistence:
   create a user namespace, reject a host-root map, map the caller, reject host
   setns, and create a private UTS namespace. It does not change global policy.
 
-FUSE boot-crash correction:
+FUSE boot-crash correction (v0.1.3):
 - Native fuse_conn_init callers omit the unused user_ns argument when the host
   has CONFIG_USER_NS=n. Preserve their initial-namespace ownership instead of
   dereferencing that argument after enabling USER_NS in the LKM translation unit.
@@ -134,3 +134,28 @@ FUSE boot-crash correction:
   are not yet ported, so sandbox-created FUSE mounts must not be assigned host
   ownership. Existing host FUSE mounts, including Android emulated storage,
   retain native behavior. New host mounts and teardown get explicit regressions.
+
+Sandbox-created FUSE mounts (v0.1.4):
+- live-fuse.c ports fuse_get_tree, parse/show options and child connection setup.
+  Keep the checked native trampoline for host mounts and never read the unused
+  native fuse_conn_init user_ns argument; assign the child owner explicitly.
+- live-fuse-request.c ports request credential conversion, shares native request
+  allocation/freeing, and wraps forced queueing for child UID/GID mappings.
+- live-fuse-inode.c and live-fuse-dir.c port attribute, permission, setattr and
+  creation paths whose CONFIG_USER_NS=n conversions were inlined by the host.
+  Port fuse_do_getattr privately: the native static function drops its first
+  parameter, so its compiled calling convention differs from its C prototype.
+- live-fuse-acl.c ports FUSE/VFS ACL identity conversion for child FUSE only;
+  native trampolines retain other filesystems' paths and existing LSM checks.
+- Child connections reject Android FUSE-BPF backing/extra LOOKUP responses,
+  no_daemon and fuseblk; mask passthrough/idmapped-mount INIT negotiation in
+  both directions. Host connections retain native extension handling.
+- Retain the original mount-owner, device-FD-owner and access checks, including
+  allow_other namespace ancestry and native allow_sys_admin_access semantics.
+- New source files derive from the same pinned DDK above, with original hashes:
+fs/fuse/inode.c 1b6d43798c2a32aeaea17476b402f7a1fe124a7dc8cc4227ee3a689619d9a8ed
+fs/fuse/dev.c 45fb2604986f4f6b6dfc4adbd6dfb718871fc9712d67b84a95b0963ef1b5e3ba
+fs/fuse/dir.c fa73442343c4b730eece321ff0118758e50d78ab25db474f4d247814cffd1c2a
+fs/fuse/acl.c f741aae90fa29a6ff85f25431c75d6c047095b2bc9565254b97007436ce431e1
+fs/fuse/fuse_i.h 9dd94f5ea11aaa88aebc3f0dfcdfd8e06535dd1db54db07cc61ec5ada58253eb
+fs/posix_acl.c 487f64867780289cf2b192baa89aeb17318cfe06e77962f37b19bf558ec57f83
