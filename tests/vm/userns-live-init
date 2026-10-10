@@ -27,6 +27,7 @@ run_tests() {
         /sandbox-test --disable-userns || return 1
         test "$(cat /proc/sys/user/max_user_namespaces)" = "$host_limit" || return 1
     fi
+    if [ -x /droidspaces-sandbox ]; then /droidspaces-sandbox || return 1; fi
     unshare -ip true || return 1
     sleep 1
     cat /sys/module/droidspaces_ns/parameters/userns_live

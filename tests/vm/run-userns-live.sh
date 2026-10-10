@@ -9,6 +9,7 @@ status=0
 docker run --rm --platform linux/arm64 -v "$root:/work" \
     -e KERNEL="${DS_USERNS_KERNEL:-/work/out/gki/android16-6.12/Image}" \
     -e MODULE="${DS_USERNS_MODULE:-/work/out/userns-live/droidspaces_ns.ko}" \
+    -e DROIDSPACES="${DS_USERNS_DROIDSPACES:-0}" \
     -e SANDBOX="${DS_USERNS_SANDBOX:-0}" \
     -e LOG="/work/$log_dir/console.log" \
     droidspaces-lkm-vm:local sh -eu -c '
@@ -54,6 +55,32 @@ docker run --rm --platform linux/arm64 -v "$root:/work" \
         mknod /tmp/root/dev/tty c 5 0
         chmod 666 /tmp/root/dev/null /tmp/root/dev/zero /tmp/root/dev/full /tmp/root/dev/random /tmp/root/dev/urandom /tmp/root/dev/tty
     fi
+    if [ "$DROIDSPACES" = 1 ]; then
+        test "$SANDBOX" = all
+        cd /work/out/userns-live/droidspaces-runtime
+        sha256sum -c SHA256SUMS
+        cd /
+        cp /work/out/userns-live/droidspaces-runtime/droidspaces /tmp/root/droidspaces
+        cp /work/tests/vm/droidspaces-sandbox /tmp/root/droidspaces-sandbox
+        chmod +x /tmp/root/droidspaces-sandbox
+        mkdir -p /tmp/root/container/bin /tmp/root/container/sbin /tmp/root/container/etc/profile.d \
+            /tmp/root/container/dev /tmp/root/container/proc /tmp/root/container/sys \
+            /tmp/root/container/tmp /tmp/root/container/run /tmp/root/container/root
+        cp -a /tmp/root/bin/. /tmp/root/container/bin/
+        cp -a /work/out/userns-live/sandbox-runtime/root/. /tmp/root/container/
+        cp /tmp/root/sandbox-test /tmp/root/container/sandbox-test
+        cp /work/tests/vm/droidspaces-sandbox-init /tmp/root/container/sbin/init
+        chmod +x /tmp/root/container/sbin/init
+        chmod 1777 /tmp/root/container/tmp
+        touch /tmp/root/container/host-should-be-hidden
+        echo "NAME=DroidspacesSandboxTest" > /tmp/root/container/etc/os-release
+        echo "root:x:0:0:root:/root:/bin/sh" > /tmp/root/container/etc/passwd
+        echo "sandbox:x:1000:1000:sandbox:/tmp:/bin/sh" >> /tmp/root/container/etc/passwd
+        echo "root:x:0:" > /tmp/root/container/etc/group
+        echo "sandbox:x:1000:" >> /tmp/root/container/etc/group
+        mknod /tmp/root/dev/ptmx c 5 2
+        chmod 666 /tmp/root/dev/ptmx
+    fi
     cp "$MODULE" /tmp/root/namespaces.ko
     cp /work/tests/vm/userns-live-init /tmp/root/init
     chmod +x /tmp/root/init
@@ -77,4 +104,7 @@ fi
 if [ "${DS_USERNS_SANDBOX:-0}" = all ]; then
     grep -q 'DS_USERNS_SANDBOX_DISABLED_PASS:' "$root/$log_dir/console.log"
     grep -q 'DS_USERNS_SANDBOX_ALL_PASS:' "$root/$log_dir/console.log"
+fi
+if [ "${DS_USERNS_DROIDSPACES:-0}" = 1 ]; then
+    grep -q 'DS_USERNS_DROIDSPACES_PASS:' "$root/$log_dir/console.log"
 fi

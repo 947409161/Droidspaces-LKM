@@ -82,6 +82,8 @@ live VM 测试以真实非特权 UID 1000 运行，不通过伪造检测结果�
   proc、/dev、私有 /tmp；宿主测试文件不可见。
 - Bubblewrap `--unshare-all` 的网络/cgroup 配置，以及 `--disable-userns --assert-userns-disabled`；
   沙箱内再次 unshare 被拒绝，宿主配额未改变。
+- Droidspaces 6.6.0（相邻仓库固定提交）的实际容器：以 `--allow-sandboxing` 启动，
+  在容器内运行上述三种 Bubblewrap 配置，停止容器后 namespace 活跃计数归零。
 - 测试结束后 user namespace 活跃计数必须为零，控制台不得出现 BUG、WARNING、Oops 或 panic。
 
 固定 GKI 和 PLZ110 原始 boot image 均用于 QEMU 回归；策略套件包含 17 个场景。
@@ -95,7 +97,7 @@ Bubblewrap 测试先将 VM 的初始 rootfs 切换为普通 tmpfs 根；初始 r
 - idmapped mount、更多降权/exec/文件能力组合，以及 Unix socket 的对端凭据与 SCM_CREDENTIALS。
 - 映射 FD 跨进程和退出竞态的压力回归。
 - 其他 procfs/VFS/LSM、keyring 和网络路径中的内联 USER_NS 假设。
-- 在实际 Droidspaces 容器内运行沙箱程序，并扩展网络与 namespace 长期存活回归。
+- 扩展实际容器应用、网络与 namespace 长期存活回归。
 - 完整沙箱程序及负向隔离测试；不能仅凭 Droidspaces 的功能探测通过发布。
 - PLZ110 真机验证、开机加载模块、状态报告和 v0.1.2 制品打包。
 
@@ -114,6 +116,9 @@ Bubblewrap 测试先将 VM 的初始 rootfs 切换为普通 tmpfs 根；初始 r
 DS_USERNS_SANDBOX=1 DS_USERNS_LOG_DIR=out/userns-live/sandbox-vm ./tests/vm/run-userns-live.sh
 # 包括网络/cgroup、禁止嵌套 user namespace 的完整工作负载
 DS_USERNS_SANDBOX=all DS_USERNS_LOG_DIR=out/userns-live/sandbox-all-vm ./tests/vm/run-userns-live.sh
+# 只读构建相邻 Droidspaces 仓库，在临时 VM 内创建专用容器运行 Bubblewrap
+./tests/vm/prepare-droidspaces-runtime.sh ../droidspaces-oss
+DS_USERNS_DROIDSPACES=1 DS_USERNS_SANDBOX=all DS_USERNS_LOG_DIR=out/userns-live/droidspaces-vm ./tests/vm/run-userns-live.sh
 ```
 
 使用 `scripts/abi/prepare-device-vm.py` 的 `prepare()` 为 PLZ110 原始镜像准备
@@ -122,6 +127,8 @@ VM 输入，再设置 `DS_USERNS_KERNEL`、`DS_USERNS_MODULE`、`DS_USERNS_LOG_D
 
 本地 live 证据位于 `out/userns-live/validation.json`、`device-abi.json` 和
 `ownership-fixed-vm/console.log`、`ownership-fixed-device-vm/console.log`。验证清单记录测试源码、二进制、内核与日志哈希。
+实际容器日志位于 `droidspaces-vm/console.log` 和 `droidspaces-device-vm/console.log`；
+Droidspaces 源码提交、文件哈希、工具包版本及静态二进制记录在 `droidspaces-runtime/`。
 BTF 比较核对聚合布局及可比较的导入函数原型，不能证明所有内联语义相容。
 已知设备额外保留字段涉及 `mm_struct`、`task_struct` 和 `files_struct`，
 没有改变本次比较的同名字段偏移或结构总大小；实验代码不读取这些设备私有字段。
