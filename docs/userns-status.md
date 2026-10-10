@@ -1,92 +1,94 @@
 # PLZ110 user namespace 移植状态
 
-目标为 v0.1.2 的 Sandboxing，仍限定 PLZ110 当前内核与纯 LKM。
-当前处于核心移植和隔离测试阶段，**尚不能为 Droidspaces 启用 Sandboxing**。
-没有发布 v0.1.2，也没有在真机加载这一实验模块。
+目标为 v0.1.2 的 Sandboxing，限定 PLZ110 当前内核与纯 LKM。
+当前已经接入真实任务、凭据、映射文件及部分文件系统路径，但**尚未达到可发布的完整 Sandboxing**。
+实验载荷仅允许 QEMU，未在手机加载；v0.1.2 尚未发布。
 
-## 已实现的部分
+## 两种测试目标
 
-`src/userns/user_namespace.c` 移植固定 Android common 6.12 的原生实现，
-包括 namespace 创建/销毁、UID/GID/project ID 映射、映射写入权限、
-setgroups 控制、父子关系和 namespace operations。符号加独立前缀，
-初始化改为模块可调用形式，释放使用专用工作队列。
+`TARGET=userns` 生成 `droidspaces_userns_test.ko`，只创建模块私有对象，
+提供 `/proc/ds_userns_test`。它不接管任务，适合检查映射、权限和生命周期的独立核心。
+此前该目标已在固定 GKI 和 PLZ110 原始内核的 QEMU 环境中通过两轮加载/卸载测试。
 
-`src/userns/credentials.c` 移植凭据复制与释放路径，保留 user namespace
-引用、LSM 凭据处理、group/user/key/ucount 引用及 RCU 释放。当前仅用于
-模块自己的凭据对象，不把这些对象提交给任务，也不混用原生凭据释放路径。
-这与替换整个内核的凭据生命周期是不同阶段，后者尚未实现。
+`TARGET=namespace USERNS=1` 生成实验性的 `droidspaces_ns.ko`，把 user namespace
+和已有 PID/IPC 移植整合。此目标安装原生函数入口及系统调用替换，接管真实任务，
+激活后固定在内核中直至重启。初始化在修改代码前检查目标内核及函数入口；
+当前明确拒绝非 `linux,dummy-virt` 机器，不能把该实验构建直接拿到手机使用。
 
-`src/userns/utsname.c` 补入采用正确 user namespace 引用的 UTS 核心。
-测试验证其所有者、共享对象、名称隔离及释放；并与原生构造函数对照，
-确认原生函数仍把新对象的所有者设为 `init_user_ns`。这份 UTS 核心同样
-尚未接管正在运行的任务。
+## 已接入的实现
 
-`droidspaces_userns_test.ko` 仅接受两个已记录的 QEMU `linux,dummy-virt`
-内核。它提供 `/proc/ds_userns_test` 测试入口，不增加 `/proc/<pid>/uid_map`，
-不更改系统调用、不安装原生函数入口跳转、不提交任务凭据。真机目标会拒绝加载。
+| 路径 | 实现 |
+| --- | --- |
+| 核心 | 原生 user namespace 创建/销毁、UID/GID/project ID 映射、写入权限、setgroups、嵌套及 namespace operations |
+| 凭据 | prepare/copy/kernel credentials、释放入口和 RCU 回调；共享原生 cred slab，保留 LSM、key、group、user 和 ucount 处理 |
+| 资源计数 | 共享原生 ucounts 表与锁，恢复 namespace 引用及普通、rlimit 计数释放路径 |
+| 任务与 procfs | clone/unshare/setns 的移植入口；真实 `/proc/<pid>/{uid_map,gid_map,projid_map,setgroups}`，保留设备原有目录表项 |
+| 身份系统调用 | UID/GID 读取与修改、res/fs ID、补充组的映射和 setgroups 策略 |
+| UTS | 原生 slab 与 namespace 所有者引用，支持子 user namespace 内修改主机名 |
+| mount namespace | 共享原生 mount tree、锁和序列号，恢复所有者及 passive 引用释放，覆盖 statmount/listmount 内联释放路径 |
+| 文件系统上下文 | fs_context 创建、复制及释放的 user namespace 引用 |
+| superblock | alloc/sget/sget_fc、错误回滚及异步销毁的所有者和引用；保留 FS_USERNS_MOUNT 与 LSM 检查 |
+| 文件属性 | arm64 stat/statx 的 UID/GID 输出转换 |
 
-## 已通过的测试
+现存原生对象没有获取过初始 user namespace 的引用，因此 live 构建将
+`init_user_ns` 作为永久对象；新建的非初始 namespace 始终使用完整引用协议。
+独立核心构建保留原生的 get/put 行为。
 
-固定 GKI 6.12 和 PLZ110 原始 boot image 中的 6.12.69 内核均在 QEMU
-中验证。最终组合先加载对应 PID/IPC 与 devtmpfs，再执行 user namespace
-核心测试；测试模块连续加载、卸载两轮，退出时 namespace 和私有凭据
-计数均归零，已有 PID/IPC 和 devtmpfs 保持正常。
+编译器内联是移植的重要限制。测试已抓到原生 ucount 计数路径和 credential RCU
+释放路径绕过入口替换造成的泄漏，随后扩大替换范围修复。mount 和 superblock
+销毁也不能只替换单个公开释放函数；相关内联调用者已一并移植。
+PLZ110 还内联了普通 stat 的结果转换函数，因此相应实现接管系统调用入口，
+不依赖 GKI 上存在但设备上缺失的局部符号。
+这不代表其他内联路径已经全部覆盖。
 
-- 空映射、UID/GID 正反向转换、未映射 ID、overflow ID。
-- 非法映射、零长度范围、范围溢出、重叠范围、尾随垃圾、无效用户地址和非零写入偏移。
-- 映射只允许成功写入一次，六段映射走动态数组及二分查找路径。
-- 非特权进程不能写其他所有者的映射，不能映射其他 UID 或宿主 UID 0。
-- 所有者的单 ID 映射，以及 GID 映射前必须禁用 setgroups 的规则。
-- setgroups 的 deny 不可恢复，已有 GID 映射后不能改为 deny。
-- 子 namespace 的原生 `cap_capable()` 判断不能授予父级、初始或兄弟 namespace 的能力。
-- 嵌套深度限制、namespace 数量配额、未映射所有者拒绝及失败后的引用回收。
-- 私有凭据复制、普通 RCU 释放、`non_rcu` 释放和只创建未提交凭据的 `unshare_userns()`。
+## 已验证范围
 
-这些结果证明独立核心在记录的环境中运行，不证明任务级 Sandbox 已隔离。
-测试明确要求原生 `unshare(CLONE_NEWUSER)` 仍失败、`/proc/self/ns/user`
-仍不存在，防止把测试入口误认为正式功能。
+live VM 测试以真实非特权 UID 1000 运行，不通过伪造检测结果启用功能：
 
-## 接入任务前的缺口
+- `clone(CLONE_NEWUSER)` 和 `unshare(CLONE_NEWUSER)` 创建不同 namespace。
+- 映射前返回 overflow ID；允许自身单 ID 映射，拒绝映射宿主 root。
+- GID 映射要求先禁用 setgroups，禁止恢复组修改权限。
+- UID/GID、res/fs ID、补充组及 stat/statx 返回映射后的值，未映射身份修改被拒绝。
+- 子 namespace 仍不能读取宿主 root 的 0600 文件。
+- 私有 mount namespace 内绑定挂载、查询、卸载正常。
+- 私有 tmpfs 创建和写入正常；归属新 PID namespace 的 procfs 可挂载并访问 PID 1。
+- UTS 主机名不影响父进程；嵌套 user namespace 创建及退出正常。
+- 测试结束后 user namespace 活跃计数必须为零，控制台不得出现 BUG、WARNING、Oops 或 panic。
 
-以下为已经定位的调用链，不是完整安全审计清单：
+固定 GKI 和 PLZ110 原始 boot image 均用于 QEMU 回归。VM 使用 `selinux=0`；
+这些结果不涵盖手机上的 Android SELinux 策略，也不等于完整 Sandbox 隔离证明。
+独立核心的深度/配额/映射边界测试与 live 任务测试互补。
 
-| 路径 | 目标内核的缺失行为 | 后续工作 |
-| --- | --- | --- |
-| 凭据 | `prepare_creds`、`prepare_kernel_cred`、释放回调省略 user namespace 引用 | 处理全局接管、现存凭据、错误回滚和 RCU 生命周期 |
-| clone/unshare/setns | 原生 `copy_creds` 和已发布 PID/IPC 载荷仍采用未启用 USER_NS 的分支 | 与 PID/IPC 载荷整合，恢复校验、创建、安装和销毁路径 |
-| procfs | `fs/proc/base.c` 的 UID/GID/project ID 映射和 setgroups 表项由配置条件移除 | 恢复真实进程入口、任务退出竞态、文件凭据和读写权限 |
-| UID/GID 系统调用 | `make_kuid` 等为恒等映射；已检查的 GKI `getuid` 直接读取宿主 UID | 覆盖身份读取/变更、groups、stat、信号等使用映射的路径 |
-| 其他 namespace 的所有者 | 禁用 USER_NS 时 `get_user_ns()` 返回 `init_user_ns`；原生 mount、UTS 构造函数使用该内联函数 | UTS 私有实现已测试；尚需全局接入，并恢复 mount/net/cgroup 等的所有者和引用 |
-| 资源计数、文件系统、LSM 和 keyring | 存在内联的 current_user_ns、ID 映射及引用假设 | 逐条覆盖相关功能与拒绝路径，不能通过仅增加一个构造函数解决 |
+## 发布前仍需完成
 
-例如，`alloc_mnt_ns()` 和 `clone_uts_ns()` 把 `get_user_ns(user_ns)` 的
-返回值保存为所有者；现有内核的该内联函数会返回初始 namespace。
-因此，仅向这些原生函数传入新 user namespace 指针仍不能正确创建
-归其所有的 mount/UTS namespace。
+- exec 后的 namespace、凭据和能力语义，以及 `mm->user_ns` 生命周期。
+- `cap_task_fix_setuid` 等能力路径仍内联恒等 UID 映射；多 ID 映射下离开 namespace root 时的降权必须补全并做负向验证。
+- setns、线程、映射 FD 跨进程和退出竞态的补充回归。
+- chown/access/chroot、其他 VFS 与 LSM、keyring、net/cgroup/time 等内联的 USER_NS 假设。
+- 完整沙箱程序及负向隔离测试；不能仅凭 Droidspaces 的功能探测通过发布。
+- PLZ110 真机验证、开机加载模块、状态报告和 v0.1.2 制品打包。
 
-不使用统一“返回允许”的权限替代，也不以修改 Droidspaces 检查结果
-作为实现。下一阶段需要先完成凭据及 namespace 所有者的生命周期衔接，
-再连接用户可见的 clone/unshare/proc 接口。
+没有采用统一返回允许的权限替代，也未修改 Droidspaces 的检查结果。
+不扩大到替换内核镜像。
 
 ## 重现
 
-前提是已有固定 DDK、VM 工具镜像及对应的内核/载荷输入：
+需要固定 DDK、VM 工具镜像及已记录的内核输入：
 
 ```sh
-./scripts/build-ddk.sh TARGET=userns OUT=/module/out/userns -j2
-DS_NS_MODULE=/work/out/gki/android16-6.12/droidspaces_ns.ko \
-DS_DEV_MODULE=/work/out/devtmpfs/droidspaces_devtmpfs.ko \
-./tests/vm/run-userns-core.sh
+./scripts/build-ddk.sh TARGET=namespace USERNS=1 OUT=/module/out/userns-live -j2
+./tests/vm/run-userns-live.sh
 ```
 
-设备原始内核的 VM 通过 `DS_USERNS_KERNEL`、`DS_USERNS_MODULE`、
-`DS_USERNS_LOG_DIR` 选择输入，同时指定 v0.1.0 的固定设备 PID/IPC 载荷、
-`DS_NS_PARAMS=activate=1` 和 v0.1.1 的 devtmpfs 载荷。
-运行时 ABI 核验不由 vermagic 替换代替。
+使用 `scripts/abi/prepare-device-vm.py` 的 `prepare()` 为 PLZ110 原始镜像准备
+VM 输入，再设置 `DS_USERNS_KERNEL`、`DS_USERNS_MODULE`、`DS_USERNS_LOG_DIR`。
+修改 vermagic 只为 VM 加载匹配，不代替 ABI 核验。
 
-本地证据位于 `out/userns/validation.json`、`out/userns/device-abi.json`
-及两份 VM console.log；其中记录源码、二进制和内核的哈希。
+本地 live 证据位于 `out/userns-live/validation.json`、`device-abi.json` 和
+`vm/console.log`、`device-vm/console.log`。验证清单记录测试源码、二进制、内核与日志哈希。
+BTF 比较核对聚合布局及可比较的导入函数原型，不能证明所有内联语义相容。
+已知设备额外保留字段涉及 `mm_struct`、`task_struct` 和 `files_struct`，
+没有改变本次比较的同名字段偏移或结构总大小；实验代码不读取这些设备私有字段。
+
 源码来源与适配说明见 [ORIGIN](../src/userns/ORIGIN)。
-
-本实验分支修改了 Makefile，因此 v0.1.1 打包器会按设计拒绝当前源码：
-如需重现该已发布版本，请使用其 `v0.1.1` 标签及对应已验证输入。
+如需重现已发布 v0.1.1，请使用对应标签；其打包器会拒绝本实验分支的修改后源码。

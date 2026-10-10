@@ -227,6 +227,11 @@ static void free_user_ns(struct work_struct *work)
 		atomic_dec(&live_namespaces);
 		dec_user_namespaces(ucounts);
 		ns = parent;
+#ifdef DS_USERNS_LIVE
+		/* Preexisting native objects never owned a reference to init_user_ns. */
+		if (parent == &init_user_ns)
+			break;
+#endif
 	} while (refcount_dec_and_test(&parent->ns.count));
 }
 

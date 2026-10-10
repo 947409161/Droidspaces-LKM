@@ -17,6 +17,11 @@
 #include "core.h"
 #include "port.h"
 #include "ipc-backend.h"
+#ifdef DS_USERNS_LIVE
+#include "../userns/live.h"
+#include <linux/user_namespace.h>
+#include <linux/utsname.h>
+#endif
 
 extern const struct file_operations ds_proc_ns_dir_operations;
 extern const struct inode_operations ds_proc_ns_dir_inode_operations;
@@ -111,6 +116,28 @@ DECLARE_IPC_SYSCALL(mq_notify);
 DECLARE_IPC_SYSCALL(mq_getsetattr);
 DECLARE_IPC_SYSCALL(reboot);
 DECLARE_IPC_SYSCALL(memfd_create);
+#ifdef DS_USERNS_LIVE
+DECLARE_IPC_SYSCALL(newfstat);
+DECLARE_IPC_SYSCALL(newfstatat);
+DECLARE_IPC_SYSCALL(setregid);
+DECLARE_IPC_SYSCALL(setgid);
+DECLARE_IPC_SYSCALL(setreuid);
+DECLARE_IPC_SYSCALL(setuid);
+DECLARE_IPC_SYSCALL(setresuid);
+DECLARE_IPC_SYSCALL(getresuid);
+DECLARE_IPC_SYSCALL(setresgid);
+DECLARE_IPC_SYSCALL(getresgid);
+DECLARE_IPC_SYSCALL(setfsuid);
+DECLARE_IPC_SYSCALL(setfsgid);
+DECLARE_IPC_SYSCALL(getgroups);
+DECLARE_IPC_SYSCALL(setgroups);
+DECLARE_IPC_SYSCALL(statmount);
+DECLARE_IPC_SYSCALL(listmount);
+DECLARE_IPC_SYSCALL(getuid);
+DECLARE_IPC_SYSCALL(geteuid);
+DECLARE_IPC_SYSCALL(getgid);
+DECLARE_IPC_SYSCALL(getegid);
+#endif
 
 struct ds_syscall_hook {
 	const char *name;
@@ -125,6 +152,22 @@ static struct ds_syscall_hook ipc_syscalls[] = {
 	IPC_SYSCALL(mq_open), IPC_SYSCALL(mq_unlink), IPC_SYSCALL(mq_timedsend),
 	IPC_SYSCALL(mq_timedreceive), IPC_SYSCALL(mq_notify), IPC_SYSCALL(mq_getsetattr),
 	IPC_SYSCALL(reboot), IPC_SYSCALL(memfd_create),
+#ifdef DS_USERNS_LIVE
+	IPC_SYSCALL(setregid),
+	IPC_SYSCALL(setgid),
+	IPC_SYSCALL(setreuid),
+	IPC_SYSCALL(setuid),
+	IPC_SYSCALL(setresuid),
+	IPC_SYSCALL(getresuid),
+	IPC_SYSCALL(setresgid),
+	IPC_SYSCALL(getresgid),
+	IPC_SYSCALL(setfsuid),
+	IPC_SYSCALL(setfsgid),
+	IPC_SYSCALL(getgroups),
+	IPC_SYSCALL(setgroups),
+	IPC_SYSCALL(statmount), IPC_SYSCALL(listmount),
+	IPC_SYSCALL(getuid), IPC_SYSCALL(geteuid), IPC_SYSCALL(getgid), IPC_SYSCALL(getegid),
+#endif
 };
 static unsigned long *syscall_table;
 
@@ -148,6 +191,42 @@ struct ds_hook {
 #define HOOK(name, target) { name, (unsigned long)(target), 0, { 0 }, { 0 }, NULL }
 #define HOOK_ORIGINAL(name, target, original) { name, (unsigned long)(target), 0, { 0 }, { 0 }, original }
 static struct ds_hook hooks[] = {
+#ifdef DS_USERNS_LIVE
+	HOOK("__arm64_sys_newfstat", __arm64_sys_ds_newfstat),
+	HOOK("__arm64_sys_newfstatat", __arm64_sys_ds_newfstatat),
+	HOOK("cp_statx", ds_userns_cp_statx),
+	HOOK("alloc_fs_context", ds_userns_alloc_fs_context),
+	HOOK("vfs_dup_fs_context", ds_userns_vfs_dup_fs_context),
+	HOOK("put_fs_context", ds_userns_put_fs_context),
+	HOOK("alloc_super", ds_userns_alloc_super),
+	HOOK("destroy_super_work", ds_userns_destroy_super_work),
+	HOOK("sget_fc", ds_userns_sget_fc),
+	HOOK("sget", ds_userns_sget),
+	HOOK("alloc_mnt_ns", ds_userns_alloc_mnt_ns),
+	HOOK("mnt_ns_release", ds_userns_mnt_ns_release),
+	HOOK("free_mnt_ns", ds_userns_free_mnt_ns),
+	HOOK("prepare_creds", ds_userns_prepare_creds),
+	HOOK("prepare_kernel_cred", ds_userns_prepare_kernel_cred),
+	HOOK("__put_cred", ds_userns_put_cred),
+	HOOK("put_cred_rcu", ds_userns_put_cred_rcu),
+	HOOK("copy_creds", ds_userns_copy_creds),
+	HOOK("alloc_ucounts", ds_un_alloc_ucounts),
+	HOOK("put_ucounts", ds_un_put_ucounts),
+	HOOK("get_ucounts", ds_un_get_ucounts),
+	HOOK("inc_ucount", ds_un_inc_ucount),
+	HOOK("dec_ucount", ds_un_dec_ucount),
+	HOOK("inc_rlimit_ucounts", ds_un_inc_rlimit_ucounts),
+	HOOK("dec_rlimit_ucounts", ds_un_dec_rlimit_ucounts),
+	HOOK("inc_rlimit_get_ucounts", ds_un_inc_rlimit_get_ucounts),
+	HOOK("dec_rlimit_put_ucounts", ds_un_dec_rlimit_put_ucounts),
+	HOOK("is_rlimit_overlimit", ds_un_is_rlimit_overlimit),
+	HOOK("copy_utsname", ds_un_copy_utsname),
+	HOOK("free_uts_ns", ds_un_free_uts_ns),
+	HOOK("proc_tgid_base_lookup", ds_userns_tgid_lookup),
+	HOOK("proc_tid_base_lookup", ds_userns_tid_lookup),
+	HOOK("proc_tgid_base_readdir", ds_userns_tgid_readdir),
+	HOOK("proc_tid_base_readdir", ds_userns_tid_readdir),
+#endif
 	HOOK_ORIGINAL("perf_event_alloc", ds_perf_event_alloc, ds_perf_alloc_original),
 	HOOK_ORIGINAL("free_event_rcu", ds_perf_free_event_rcu, ds_perf_free_original),
 	HOOK("fuse_conn_init", ds_fuse_conn_init),
@@ -287,6 +366,9 @@ static int install_stopped(void *unused)
 			goto rollback;
 		}
 	}
+#ifdef DS_USERNS_LIVE
+	WRITE_ONCE(init_user_ns.ns.ops, &userns_operations);
+#endif
 	return 0;
 
 rollback:

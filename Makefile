@@ -21,6 +21,14 @@ endif
 ccflags-y += -DCONFIG_PID_NS=1 -DCONFIG_IPC_NS=1 -DCONFIG_POSIX_MQUEUE=1
 ccflags-y += -DCONFIG_POSIX_MQUEUE_SYSCTL=1 -DCONFIG_SYSVIPC_SYSCTL=1
 ccflags-y += -include $(src)/$(PORT_DIR)/names.h
+ifeq ($(USERNS),1)
+droidspaces_ns-y += src/userns/user_namespace.o src/userns/credentials.o src/userns/utsname.o \
+	src/userns/live-credentials.o src/userns/live-ucounts.o src/userns/live-proc.o src/userns/live-syscalls.o src/userns/live-mount.o src/userns/live-fs-context.o src/userns/live-super.o \
+	src/userns/live-identity.o src/userns/live-groups.o src/userns/live-stat.o
+ccflags-y += -DCONFIG_USER_NS=1 -DDS_USERNS_LIVE=1
+ccflags-y += -include $(src)/src/userns/live-names.h
+LINUXINCLUDE := -I$(src)/src/userns/compat $(LINUXINCLUDE)
+endif
 ccflags-y += -I$(srctree)/fs/proc -I$(srctree)/fs -I$(srctree)
 else ifeq ($(TARGET),userns)
 obj-m := droidspaces_userns_test.o

@@ -11,8 +11,9 @@ Adaptations:
 - Track private namespaces, use a dedicated destruction workqueue, and drain
   private credential RCU callbacks before draining namespace work at teardown.
 - Port credential duplication and release with user namespace reference handling.
-  These copies belong only to this module; they never become native task or file
-  credentials and are not mixed with native prepare/put_cred lifecycles.
+  The isolated core target owns private copies. USERNS=1 additionally replaces
+  native prepare/copy/free entry points and the native RCU callback, sharing the
+  native slab; init_user_ns is treated as immortal for pre-activation objects.
 - Provide QEMU-only test endpoints under /proc/ds_userns_test. They exercise the
   upstream map-write implementation and permission checks without adding
   /proc/<pid>/uid_map, switching a task namespace, or patching native entries.
@@ -21,6 +22,28 @@ Adaptations:
 
 Additional source: Android common kernel, kernel/utsname.c
 Original UTS source SHA256: 436508ed5990edb5f032df8ad5963c537ed74d405c6f41b7375eed1486b921ca
-- Use an independent UTS slab and prefixed operations, preserving upstream copy,
-  name, owner, quota and release semantics. Test only private objects; native
-  task nsproxies and the host UTS implementation are left unchanged.
+- Isolated target: independent UTS slab and private objects. Live VM target:
+  shared native UTS slab with prefixed copy/free operations and owner references.
+
+Live VM target (TARGET=namespace USERNS=1):
+- Connect the user namespace implementation to the existing PID/IPC task paths.
+- Restore native proc mapping entries while preserving the target's directory
+  tables, including vendor entries and validated alignment padding.
+- Share native ucounts state and replace accounting paths with inline releases.
+- Restore mount namespace, fs_context and superblock user ownership/lifetimes,
+  including statmount/listmount and sget/sget_fc inline destruction paths.
+- Restore arm64 identity/group syscalls and stat/statx mapping at output.
+- Keep native filesystem and LSM callbacks and permission checks.
+- Test real nonprivileged tasks in QEMU; reject phone activation pending complete
+  sandbox workload, lifetime, policy and device validation.
+
+Additional pinned DDK source hashes:
+kernel/ucount.c bccd471b035449aca9416f6dc7d3a85d2503c4edac0df183d2e83415fc6519ca
+fs/proc/base.c b4692c10f02ed29b62ea3463f2491e461f51b63a8262f3554eda92231f1ef003
+fs/namespace.c af7a59e60bb8abd5e6ac3979acd844307aa522a1f4b82a6dfaec9e4ddfbe707f
+fs/fs_context.c 8e4d343563b0a6f7540eccb958d749fd704bed030852081ebde63c843c6c425d
+fs/super.c 2188e80fd21219379bf10e4bb6d7fe9a31e41d350390fafa1bba364169f4607c
+kernel/sys.c 24f4a0073a35b14906fcdb99a96e9e2a473f356b6e97b648691979a7a4d9f6ef
+kernel/groups.c 291143c91266a69bc84216d7ea58597647cbbaa3ba400c79237b59dfd024b3ce
+fs/stat.c 53cafc68502adbf426a7d38827bbb52e0cb4b57c0cc772a759073706964fb587
+include/linux/user_namespace.h 4aa7d8fd93f3ee93da17b384820deaf27e7b77cd00796ed9d60bebdbc87aab72

@@ -8,6 +8,9 @@
 #include "port.h"
 #include "ipc-backend.h"
 #include "../gki-target.h"
+#ifdef DS_USERNS_LIVE
+#include "../userns/live.h"
+#endif
 
 static bool activate;
 module_param(activate, bool, 0400);
@@ -25,6 +28,14 @@ static const struct kernel_param_ops live_count_ops = {
 module_param_cb(pid_live, &live_count_ops, &ds_pid_live, 0400);
 module_param_cb(ipc_live, &live_count_ops, &ds_ipc_live, 0400);
 module_param_cb(ipc_tasks, &live_count_ops, &ds_ipc_task_live, 0400);
+#ifdef DS_USERNS_LIVE
+static int userns_live_get(char *buffer, const struct kernel_param *param)
+{
+	return scnprintf(buffer, PAGE_SIZE, "%d\n", ds_userns_core_live());
+}
+static const struct kernel_param_ops userns_live_ops = { .get = userns_live_get };
+module_param_cb(userns_live, &userns_live_ops, NULL, 0400);
+#endif
 
 static int __init ds_port_init(void)
 {
@@ -36,6 +47,14 @@ static int __init ds_port_init(void)
 	bool device = device_kernel && of_machine_is_compatible("qcom,canoe");
 #endif
 	int ret;
+
+#ifdef DS_USERNS_LIVE
+	/* Symbol scanning in emulated device kernels needs headroom under load. */
+	hint.timeout_ms = 15000;
+	/* Until all inlined host paths are covered, activation is confined to VMs. */
+	if (!of_machine_is_compatible("linux,dummy-virt"))
+		return -EOPNOTSUPP;
+#endif
 
 #ifdef DS_GKI_ANDROID
 	if (!ds_gki_target_supported()) {
@@ -55,8 +74,11 @@ static int __init ds_port_init(void)
 	if (ret)
 		return ret;
 	find_kallsyms_base();
-	if (kallrecon_fail_reason() != KALLRECON_OK || !klnum_val)
+	if (kallrecon_fail_reason() != KALLRECON_OK || !klnum_val) {
+		pr_err("symbol reconstruction failed: reason=%d symbols=%u\n",
+		       kallrecon_fail_reason(), klnum_val);
 		return -ENODATA;
+	}
 	if (kallsyms_name_to_addr("pidns_operations") ||
 	    kallsyms_name_to_addr("ipcns_operations")) {
 		pr_err("this prototype requires native PID/IPC namespaces to be absent\n");
@@ -65,33 +87,72 @@ static int __init ds_port_init(void)
 	ret = ds_hooks_prepare();
 	if (ret)
 		return ret;
-	ret = ds_pid_init();
+#ifdef DS_USERNS_LIVE
+	ret = ds_userns_core_init();
 	if (ret)
 		return ret;
+	ret = ds_userns_uts_init();
+	if (ret) {
+		pr_err("userns UTS initialization: %d\n", ret);
+		goto fail_userns_core;
+	}
+	ret = ds_userns_proc_prepare();
+	if (ret) {
+		pr_err("userns proc preparation: %d\n", ret);
+		goto fail_userns_core;
+	}
+#endif
+	ret = ds_pid_init();
+	if (ret)
+#ifdef DS_USERNS_LIVE
+		goto fail_userns_proc;
+#else
+		return ret;
+#endif
 	ret = ds_ipc_backend_init();
 	if (ret) {
 		ds_pid_exit();
+#ifdef DS_USERNS_LIVE
+		goto fail_userns_proc;
+#else
 		return ret;
+#endif
 	}
 	ret = ds_port_selftest();
 	if (ret) {
 		ds_ipc_backend_exit();
 		ds_ipc_flush();
 		ds_pid_exit();
+#ifdef DS_USERNS_LIVE
+		goto fail_userns_proc;
+#else
 		return ret;
+#endif
 	}
 	if (activate) {
 		ret = ds_hooks_install();
 		if (ret) {
 			ds_ipc_backend_exit();
 			ds_pid_exit();
+#ifdef DS_USERNS_LIVE
+			goto fail_userns_proc;
+#else
 			return ret;
+#endif
 		}
 		pr_info("experimental namespace hooks active; module stays pinned until reboot\n");
 	} else {
 		pr_info("namespace core selftests passed; syscall hooks are not installed\n");
 	}
 	return 0;
+#ifdef DS_USERNS_LIVE
+fail_userns_proc:
+	ds_userns_proc_cleanup();
+fail_userns_core:
+	ds_userns_core_drain();
+	ds_userns_core_exit();
+	return ret;
+#endif
 }
 
 static void __exit ds_port_exit(void)
@@ -99,6 +160,11 @@ static void __exit ds_port_exit(void)
 	ds_ipc_backend_exit();
 	ds_ipc_flush();
 	ds_pid_exit();
+#ifdef DS_USERNS_LIVE
+	ds_userns_proc_cleanup();
+	ds_userns_core_drain();
+	ds_userns_core_exit();
+#endif
 	pr_info("unloaded\n");
 }
 

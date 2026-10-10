@@ -16,7 +16,11 @@
 #include <linux/sched/task.h>
 #include "test.h"
 
+#ifdef DS_USERNS_LIVE
+extern struct kmem_cache *uts_ns_cache;
+#else
 static struct kmem_cache *uts_ns_cache;
+#endif
 static atomic_t live_uts = ATOMIC_INIT(0);
 
 static struct ucounts *inc_uts_namespaces(struct user_namespace *ns)
@@ -72,7 +76,9 @@ static struct uts_namespace *clone_uts_ns(struct user_namespace *user_ns,
 	memcpy(&ns->name, &old_ns->name, sizeof(ns->name));
 	ns->user_ns = get_user_ns(user_ns);
 	up_read(&uts_sem);
+#ifndef DS_USERNS_LIVE
 	atomic_inc(&live_uts);
+#endif
 	return ns;
 
 fail_free:
@@ -112,7 +118,9 @@ void free_uts_ns(struct uts_namespace *ns)
 	put_user_ns(ns->user_ns);
 	ns_free_inum(&ns->ns);
 	kmem_cache_free(uts_ns_cache, ns);
+#ifndef DS_USERNS_LIVE
 	atomic_dec(&live_uts);
+#endif
 }
 
 static inline struct uts_namespace *to_uts_ns(struct ns_common *ns)
@@ -172,6 +180,9 @@ const struct proc_ns_operations utsns_operations = {
 
 int ds_userns_uts_init(void)
 {
+#ifdef DS_USERNS_LIVE
+	return uts_ns_cache ? 0 : -EINVAL;
+#else
 	uts_ns_cache = kmem_cache_create_usercopy(
 			"ds_userns_uts", sizeof(struct uts_namespace), 0,
 			SLAB_ACCOUNT,
@@ -179,6 +190,7 @@ int ds_userns_uts_init(void)
 			sizeof_field(struct uts_namespace, name),
 			NULL);
 	return uts_ns_cache ? 0 : -ENOMEM;
+#endif
 }
 
 int ds_userns_uts_live(void)
@@ -188,6 +200,8 @@ int ds_userns_uts_live(void)
 
 void ds_userns_uts_exit(void)
 {
+#ifndef DS_USERNS_LIVE
 	WARN_ON(atomic_read(&live_uts));
 	kmem_cache_destroy(uts_ns_cache);
+#endif
 }

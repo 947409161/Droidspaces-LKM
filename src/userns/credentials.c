@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* Derived from Android common kernel/cred.c; isolated module-owned copies only. */
+/* Android common kernel/cred.c. Private credentials in the core-test target;
+ * native task/file credential lifecycle replacements in the live VM target. */
 #include <linux/cred.h>
 #include <linux/user_namespace.h>
 #include <linux/security.h>
@@ -10,7 +11,7 @@
 extern struct kmem_cache *cred_jar;
 static atomic_t live_creds = ATOMIC_INIT(0);
 
-static void ds_userns_put_cred_rcu(struct rcu_head *rcu)
+void ds_userns_put_cred_rcu(struct rcu_head *rcu)
 {
 	struct cred *cred = container_of(rcu, struct cred, rcu);
 
@@ -30,7 +31,9 @@ static void ds_userns_put_cred_rcu(struct rcu_head *rcu)
 		put_ucounts(cred->ucounts);
 	put_user_ns(cred->user_ns);
 	kmem_cache_free(cred_jar, cred);
+#ifndef DS_USERNS_LIVE
 	atomic_dec(&live_creds);
+#endif
 }
 
 void ds_userns_put_cred(struct cred *cred)
@@ -61,7 +64,9 @@ struct cred *ds_userns_prepare_creds_from(const struct cred *old)
 
 	new->non_rcu = 0;
 	atomic_long_set(&new->usage, 1);
+#ifndef DS_USERNS_LIVE
 	atomic_inc(&live_creds);
+#endif
 	get_group_info(new->group_info);
 	get_uid(new->user);
 	get_user_ns(new->user_ns);

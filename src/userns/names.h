@@ -28,7 +28,7 @@
 #define current_in_userns ds_un_current_in_userns
 #define ns_get_owner ds_un_ns_get_owner
 #define userns_operations ds_un_userns_operations
-/* These copies never become native task or file credentials. */
+/* The core-test target owns private copies; USERNS=1 also hooks native entries. */
 #define prepare_creds ds_userns_prepare_creds
 #define abort_creds ds_userns_abort_creds
 #define __put_cred ds_userns_put_cred
