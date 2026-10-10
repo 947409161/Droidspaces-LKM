@@ -29,9 +29,9 @@ jobs:
         with:
           python-version: '3.x'
       - name: Build pinned Android 13 5.15 module
-        run: python3 scripts/build-gki.py 5.15 -j2
+        run: sudo "$(command -v python3)" scripts/build-gki.py 5.15 -j2
       - name: Prepare ABI comparison inputs
-        run: python3 scripts/prepare-gki-vm.py 5.15
+        run: sudo "$(command -v python3)" scripts/prepare-gki-vm.py 5.15
       - uses: actions/upload-artifact@v4
         with:
           name: android13-5.15-abi-inputs
