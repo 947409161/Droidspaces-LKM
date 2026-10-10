@@ -25,9 +25,6 @@ exec "$base/busybox" unshare -m -n -- "$base/busybox" sh -eu -c '
     "$bb" mount -t tmpfs -o size=256m,mode=0755 userns-test "$base/root"
     "$bb" tar -xzf "$base/runtime.tar.gz" -C "$base/root"
     "$bb" cp "$base/userns-tests" "$base/root/device-tests"
-    for i in $("$bb" seq 0 63); do
-        [ -e "$base/root/dev/loop$i" ] || "$bb" mknod "$base/root/dev/loop$i" b 7 "$i"
-    done
     # A plain chroot correctly blocks CLONE_NEWUSER. Give the test namespace
     # its own actual root, then detach the old Android mount tree locally.
     mkdir "$base/root/old-root"

@@ -2,4 +2,4 @@
 # SPDX-License-Identifier: GPL-2.0-only
 MODDIR=${0%/*}
 . "$MODDIR/common.sh"
-ds_status '[待加载] 等待 service 阶段加载 PID / IPC + devtmpfs；Sandboxing 未提供。'
+ds_status '[待加载] 等待 service 阶段加载 PID / IPC + devtmpfs + Sandboxing。'

@@ -15,6 +15,7 @@ mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 echo 0 > /proc/sys/kernel/kptr_restrict
 run_tests() {
+    if [ -f /hma.ko ]; then /load-module /hma.ko "setuid_tier=inline uid_tier=inline" || return 1; fi
     /load-module /namespaces.ko activate=1 || return 1
     /userns-live-test || return 1
     mount -t ext4 -o loop /filecaps.ext4 /test-ext4 || return 1

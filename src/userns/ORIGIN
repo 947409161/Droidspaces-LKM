@@ -115,3 +115,12 @@ Credential and cgroup context ownership follow-up:
   retained map FDs remain usable, one writer wins, and all references drain.
 security/keys/process_keys.c 8a85fb472e554a3e68083344354bd3928d15592b67e444860f19e8c35f5eeabd
 kernel/cgroup/cgroup.c 2df0586cdb1516bb9f64c0c8f56f8628a3d77369feb6a6a615352c7f9ea64be8
+
+PLZ110 hardware coexistence:
+- For the observed HMA UID Fake 0.4.0+1c71b6c setuid inline hook, retain its
+  entry, wrapper and original trampoline. After exact instruction, destination
+  and CFI checks, redirect the native +4 resume body to our capability handler.
+  No HMA code is copied or shipped; its unknown hook layouts remain rejected.
+- src/health/userns.c is an original bounded boot check: drop to UID/GID 1000,
+  create a user namespace, reject a host-root map, map the caller, reject host
+  setns, and create a private UTS namespace. It does not change global policy.

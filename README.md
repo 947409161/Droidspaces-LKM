@@ -1,16 +1,17 @@
 # Droidspaces LKM
 
-为 Android 内核动态补充 Droidspaces 所需的 PID / IPC namespace 及 devtmpfs 能力。
+为 Android 内核动态补充 Droidspaces 所需的 PID / IPC namespace、devtmpfs 及 Sandboxing（user namespace）能力。
 通过 KernelSU 的 `ksud insmod` 加载，无需刷写内核，设备运行时无需内核源码。
 
-v0.1.1 是 PLZ110 指定 6.12.69 内核的设备版本，提供 PID / IPC + devtmpfs，
-已通过该设备真机测试。Sandboxing（user namespace）不包含在本版本中，
-计划于 v0.1.2 继续适配，实验进度见 [user namespace 移植状态](docs/userns-status.md)。
+v0.1.2 是 PLZ110 指定 6.12.69 内核的设备版本，提供 PID / IPC + devtmpfs +
+Sandboxing。已在真机 SELinux Enforcing 环境中，通过身份与权限隔离测试，以及
+实际 Droidspaces 容器内的 Bubblewrap 工作负载。实现和验证范围见
+[user namespace 移植状态](docs/userns-status.md)。
 
 v0.2.0 是此前发布的独立 GKI 实验版本，提供六份 PID / IPC 构建，不含
 devtmpfs；它不替代 PLZ110 专用版本。同一 KMI 不代表厂商内部 ABI 兼容。
 
-## PLZ110 v0.1.1
+## PLZ110 v0.1.2
 
 仅支持 `qcom,canoe`、ARM64、4 KiB 页面及完整内核版本：
 
@@ -18,17 +19,19 @@ devtmpfs；它不替代 PLZ110 专用版本。同一 KMI 不代表厂商内部 A
 6.12.69-android16-6-g242e1a07f878-ab15865446-4k
 ```
 
-从 [v0.1.1 Release](https://github.com/Shikochin/Droidspaces-LKM/releases/tag/v0.1.1)
-下载 `Droidspaces-LKM-KernelSU-v0.1.1-PLZ110.zip`，在 KernelSU 管理器中安装后
+从 [v0.1.2 Release](https://github.com/Shikochin/Droidspaces-LKM/releases/tag/v0.1.2)
+下载 `Droidspaces-LKM-KernelSU-v0.1.2-PLZ110.zip`，在 KernelSU 管理器中安装后
 重启。安装包使用相同的 `droidspaces_lkm` 模块 ID，可替换已安装的旧版本；
 安装和每次开机均要求设备、完整内核版本及 BTF 指纹与验证目标匹配。
 
-开机按顺序加载 PID / IPC 和 devtmpfs 两个 `.ko`，简介显示实际结果：
+开机加载整合 PID / IPC / user namespace 的 `.ko` 和 devtmpfs `.ko`，
+随后以普通 UID 检查真实身份映射与权限拒绝行为，简介显示实际结果：
 
 | 状态 | 含义 |
 | --- | --- |
-| `[已加载]` | PID / IPC 接口正常，devtmpfs `ready=Y` 且 `errors=0` |
-| `[部分加载]` | PID / IPC 已激活，devtmpfs 加载或健康检查失败 |
+| `[已加载]` | PID / IPC 接口正常、devtmpfs 健康且 Sandboxing 功能检查通过 |
+| `[部分加载]` | namespace 已激活，但 devtmpfs 或 Sandboxing 功能检查失败 |
+| `[需重启]` | 当前仍是旧 namespace 模块，需重启应用更新 |
 | `[加载失败]` | 载荷损坏、加载器失败或已有模块状态异常 |
 | `[不兼容]` / `[不支持]` | 内核指纹或设备不匹配，停止加载 |
 
@@ -37,7 +40,9 @@ devtmpfs；它不替代 PLZ110 专用版本。同一 KMI 不代表厂商内部 A
 已激活模块需重启才能替换或移除。
 
 Release 同时提供两个独立 `.ko` 与 `SHA256SUMS`，建议使用包含目标校验的
-完整 KernelSU ZIP。真机测试和实现边界见 [PLZ110 devtmpfs 验证记录](docs/devtmpfs-plz110.md)。
+完整 KernelSU ZIP。版本说明见 [v0.1.2 验证与安装](docs/releases-v0.1.2.md)。
+已验证 HMA UID Fake 0.4.0+1c71b6c 和 NoMount 共存；未知入口修改会拒绝加载。
+Droidspaces 容器需启用 `--allow-sandboxing`；不会自动更改现有容器设置。
 
 ## GKI v0.2.0
 
@@ -172,7 +177,9 @@ PLC110 的指定 6.6.118 内核另有 [手动测试包说明](docs/plc110-device
 - 使用未导出的内核接口和实验性入口替换，不保证跨厂商或跨内核构建兼容。
 - 不支持 32 位 IPC 兼容系统调用；`SHM_HUGETLB` 返回 `EOPNOTSUPP`。
 - 未覆盖完整 rootfs / systemd 启动、长期高并发、OOM 和所有 SELinux 域。
-- 不提供 user namespace 或额外 cgroup 控制器；devtmpfs 仅包含在 PLZ110 v0.1.1 中。
+- user namespace 仅包含在 PLZ110 v0.1.2 中；devtmpfs 包含在 PLZ110 v0.1.1 / v0.1.2 中。
+- 不补充额外 cgroup 控制器。尚未覆盖 idmapped mount、全部内联权限路径及长期高负载，
+  已验证 Bubblewrap 场景不代表完整 Linux USER_NS 等价性或所有沙箱应用均兼容。
 - 原生已支持 PID namespace 的内核不属于本补丁的适用范围。
 
 ## 许可证与来源

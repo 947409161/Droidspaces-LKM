@@ -53,9 +53,23 @@ ds_dev_active() {
 }
 
 ds_payload_valid() {
+    [ -x "$MODDIR/bin/userns-check" ] &&
     [ -s "$MODDIR/kernel/droidspaces_ns.ko" ] &&
     [ -s "$MODDIR/kernel/droidspaces_devtmpfs.ko" ] &&
-    (cd "$MODDIR/kernel" && sha256sum -c SHA256SUMS)
+    (cd "$MODDIR" && sha256sum -c SHA256SUMS)
+}
+
+ds_sandbox_available() {
+    [ "$(cat "$DS_MODULE_SYS/parameters/userns_device_test" 2>/dev/null)" = Y ] &&
+    [ -r "$DS_MODULE_SYS/parameters/userns_live" ] && [ -e "$DS_PROC_NS/user" ]
+}
+
+ds_health() {
+    if ! "$MODDIR/bin/userns-check"; then
+        ds_status '[部分加载] PID / IPC + devtmpfs 已加载；Sandboxing 功能检查失败，详见 load.log。'
+        return 1
+    fi
+    ds_status '[已加载] PID / IPC + devtmpfs 正常；Sandboxing 身份映射与权限检查通过；更换 .ko 需重启。'
 }
 
 ds_load() {
@@ -68,11 +82,15 @@ ds_load() {
         return 1
     fi
     if ! ds_payload_valid; then
-        ds_status '[加载失败] .ko 缺失或 SHA-256 校验失败；请重新安装完整 ZIP。'
+        ds_status '[加载失败] 载荷缺失或 SHA-256 校验失败；请重新安装完整 ZIP。'
         return 1
     fi
     if [ -d "$DS_MODULE_SYS" ] && ! ds_ns_active; then
         ds_status '[加载失败] PID / IPC 模块存在但未激活；请重启后重试。'
+        return 1
+    fi
+    if ds_ns_active && ! ds_sandbox_available; then
+        ds_status '[需重启] 当前 PID / IPC 模块不含本版 Sandboxing；请重启以加载 v0.1.2。'
         return 1
     fi
     if [ -d "$DS_DEV_SYS" ] && ! ds_dev_active; then
@@ -80,28 +98,30 @@ ds_load() {
         return 1
     fi
     if ds_ns_active && ds_dev_active; then
-        ds_status '[已加载] PID / IPC + devtmpfs 均正常（本次开机已加载）；Sandboxing 未提供。'
-        return 0
+        ds_health
+        return $?
     fi
     if [ ! -x "$DS_KSUD" ]; then
         ds_status '[加载失败] 找不到可执行的 ksud；请检查 KernelSU。'
         return 1
     fi
     if ! ds_ns_active; then
-        ds_status '[加载中] 正在激活 PID / IPC namespace。'
-        "$DS_KSUD" insmod "$MODDIR/kernel/droidspaces_ns.ko" activate=1
+        ds_status '[加载中] 正在激活 PID / IPC / user namespace。'
+        "$DS_KSUD" insmod "$MODDIR/kernel/droidspaces_ns.ko" activate=1 userns_device_test=1
         ds_result=$?
-        if [ "$ds_result" -ne 0 ] || ! ds_ns_active; then
+        if [ "$ds_result" -ne 0 ] || ! ds_ns_active || ! ds_sandbox_available; then
             ds_status "[加载失败] PID / IPC 返回 ${ds_result} 或激活检查未通过；详见 load.log。"
             return 1
         fi
     fi
-    ds_status '[加载中] PID / IPC 已激活，正在加载 devtmpfs。'
-    "$DS_KSUD" insmod "$MODDIR/kernel/droidspaces_devtmpfs.ko"
-    ds_result=$?
-    if [ "$ds_result" -ne 0 ] || ! ds_dev_active; then
-        ds_status "[部分加载] PID / IPC 已激活；devtmpfs 返回 ${ds_result} 或 ready/errors 检查未通过；请查看 load.log 并重启。"
-        return 1
+    if ! ds_dev_active; then
+        ds_status '[加载中] PID / IPC / user namespace 已激活，正在加载 devtmpfs。'
+        "$DS_KSUD" insmod "$MODDIR/kernel/droidspaces_devtmpfs.ko"
+        ds_result=$?
+        if [ "$ds_result" -ne 0 ] || ! ds_dev_active; then
+            ds_status "[部分加载] namespace 已激活；devtmpfs 返回 ${ds_result} 或 ready/errors 检查未通过；请查看 load.log 并重启。"
+            return 1
+        fi
     fi
-    ds_status '[已加载] PID / IPC + devtmpfs 均正常；Sandboxing 未提供；更换 .ko 需重启。'
+    ds_health
 }

@@ -16,6 +16,7 @@ status=0
 docker run --rm --platform linux/arm64 -v "$root:/work" \
     -e KERNEL="${DS_USERNS_KERNEL:-/work/out/gki/android16-6.12/Image}" \
     -e MODULE="${DS_USERNS_MODULE:-/work/out/userns-live/droidspaces_ns.ko}" \
+    -e HMA="${DS_USERNS_HMA:-}" \
     -e EXPORT_ROOT="$export_root" \
     -e DROIDSPACES="${DS_USERNS_DROIDSPACES:-0}" \
     -e SANDBOX="${DS_USERNS_SANDBOX:-0}" \
@@ -89,13 +90,14 @@ docker run --rm --platform linux/arm64 -v "$root:/work" \
         mknod /tmp/root/dev/ptmx c 5 2
         chmod 666 /tmp/root/dev/ptmx
     fi
+    if [ -n "$HMA" ]; then cp "$HMA" /tmp/root/hma.ko; fi
     cp "$MODULE" /tmp/root/namespaces.ko
     cp /work/tests/vm/userns-live-init /tmp/root/init
     chmod +x /tmp/root/init
     mknod /tmp/root/dev/console c 5 1
     if [ -n "$EXPORT_ROOT" ]; then
         # Hardware tests invoke an explicit runner, never the VM poweroff init.
-        tar -C /tmp/root --exclude=./init --exclude=./namespaces.ko --exclude=./load-module -czf "$EXPORT_ROOT" .
+        tar -C /tmp/root --exclude=./init --exclude=./namespaces.ko --exclude=./load-module --exclude=./hma.ko -czf "$EXPORT_ROOT" .
         cp /usr/bin/busybox "$EXPORT_ROOT.busybox"
     fi
     cd /tmp/root
@@ -120,4 +122,8 @@ if [ "${DS_USERNS_SANDBOX:-0}" = all ]; then
 fi
 if [ "${DS_USERNS_DROIDSPACES:-0}" = 1 ]; then
     grep -q 'DS_USERNS_DROIDSPACES_PASS:' "$root/$log_dir/console.log"
+fi
+
+if [ -n "${DS_USERNS_HMA:-}" ]; then
+    grep -q 'preserving HMA setuid entry; replacing native resume body' "$root/$log_dir/console.log"
 fi

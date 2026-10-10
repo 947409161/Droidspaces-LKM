@@ -26,7 +26,13 @@ class LoaderTests(unittest.TestCase):
             data = ('fake ' + name).encode()
             (self.module / 'kernel' / name).write_bytes(data)
             sums.append(f'{hashlib.sha256(data).hexdigest()}  {name}\n')
-        (self.module / 'kernel/SHA256SUMS').write_text(''.join(sums))
+        (self.module / 'bin').mkdir()
+        probe = self.module / 'bin/userns-check'
+        probe.write_text('#!/bin/sh\n[ "$FAKE_MODE" != health_fail ]\n')
+        probe.chmod(0o755)
+        sums = [line.replace('  ', '  kernel/') for line in sums]
+        sums.append(f'{hashlib.sha256(probe.read_bytes()).hexdigest()}  bin/userns-check\n')
+        (self.module / 'SHA256SUMS').write_text(''.join(sums))
         (self.root / 'compatible').write_bytes(b'qcom,canoe\0qcom,test\0')
         (self.root / 'btf').write_bytes(b'fixed BTF fixture')
         self.btf_hash = hashlib.sha256((self.root / 'btf').read_bytes()).hexdigest()
@@ -42,9 +48,12 @@ printf '%s\\n' "$*" >> "$FAKE_ROOT/calls"
 case "$2" in
     */droidspaces_ns.ko)
         [ "$FAKE_MODE" != ns_error ] || exit 17
-        [ "$3" = activate=1 ] && [ "$#" = 3 ] || exit 18
+        [ "$3" = activate=1 ] && [ "$4" = userns_device_test=1 ] && [ "$#" = 4 ] || exit 18
         mkdir -p "$FAKE_ROOT/sys/parameters" "$FAKE_ROOT/ns"
         echo Y > "$FAKE_ROOT/sys/parameters/activate"
+        echo Y > "$FAKE_ROOT/sys/parameters/userns_device_test"
+        echo 0 > "$FAKE_ROOT/sys/parameters/userns_live"
+        touch "$FAKE_ROOT/ns/user"
         touch "$FAKE_ROOT/ns/pid" "$FAKE_ROOT/ns/pid_for_children" "$FAKE_ROOT/ns/ipc"
         ;;
     */droidspaces_devtmpfs.ko)
@@ -94,6 +103,25 @@ ds_load
         self.assertIn('droidspaces_devtmpfs.ko', self.calls()[1])
         self.assertEqual(self.run_loader().returncode, 0)
         self.assertEqual(len(self.calls()), 2)
+
+    def test_health_failure_is_partial(self):
+        self.assertNotEqual(self.run_loader(mode='health_fail').returncode, 0)
+        self.assertIn('[部分加载]', self.status)
+        self.assertEqual(len(self.calls()), 2)
+        self.assertEqual(self.run_loader().returncode, 0)
+        self.assertEqual(len(self.calls()), 2)
+
+    def test_old_active_module_needs_reboot(self):
+        self.assertEqual(self.run_loader().returncode, 0)
+        (self.root / 'sys/parameters/userns_device_test').unlink()
+        self.assertNotEqual(self.run_loader().returncode, 0)
+        self.assertIn('[需重启]', self.status)
+        self.assertEqual(len(self.calls()), 2)
+
+    def test_corrupt_health_probe_stops_loading(self):
+        (self.module / 'bin/userns-check').write_text('#!/bin/sh\nexit 0\n')
+        self.assertNotEqual(self.run_loader().returncode, 0)
+        self.assertEqual(self.calls(), [])
 
     def test_btf_mismatch_or_missing(self):
         for data in (b'wrong BTF', None):

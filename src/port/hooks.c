@@ -321,11 +321,53 @@ static bool movable_prologue(u32 op)
 		(op & 0xff8003e0) == 0xa98003e0;
 }
 
+#ifdef DS_USERNS_LIVE
+/* HMA UID Fake 0.4.0 detours one non-argument instruction, then resumes at +4.
+ * Keep its entry and wrapper intact. The replacement starts at that resume
+ * point, so HMA still surrounds the namespace-aware capability transition.
+ * Accept only the observed SUB w8,w2,#1 / B-resume trampoline, never a general
+ * relocation of another module's prologue.
+ */
+static int setuid_chain_offset(struct ds_hook *hook)
+{
+	unsigned long stub, original, inline_hook, target;
+	u32 code[4], stub_code[2];
+	s64 delta;
+
+	if (strcmp(hook->name, "cap_task_fix_setuid") ||
+	    (hook->saved[0] & 0xfc000000) != 0x14000000)
+		return 0;
+	stub = module_kallsyms_lookup_name("hma_uidfake:uf_setuid_stub");
+	original = module_kallsyms_lookup_name("hma_uidfake:uf_setuid_orig");
+	inline_hook = module_kallsyms_lookup_name("hma_uidfake:uf_setuid_inline_hook");
+	delta = sign_extend64(hook->saved[0] & 0x03ffffff, 25) * 4;
+	target = hook->address + delta;
+	if (!stub || !original || !inline_hook || target != stub ||
+	    safe_read(code, (void *)original, sizeof(code)) ||
+	    safe_read(stub_code, (void *)stub, sizeof(stub_code)) ||
+	    code[0] != 0x51000448 || (code[1] & 0xfc000000) != 0x14000000 ||
+	    code[2] || code[3] || stub_code[0] != 0xd50324df ||
+	    (stub_code[1] & 0xfc000000) != 0x14000000 ||
+	    !matching_cfi(hook->address, hook->replacement) ||
+	    !matching_cfi(inline_hook, hook->replacement))
+		return -EOPNOTSUPP;
+	delta = sign_extend64(code[1] & 0x03ffffff, 25) * 4;
+	if (original + 4 + delta != hook->address + 4)
+		return -EOPNOTSUPP;
+	delta = sign_extend64(stub_code[1] & 0x03ffffff, 25) * 4;
+	if (stub + 4 + delta != inline_hook)
+		return -EOPNOTSUPP;
+	pr_info("preserving HMA setuid entry; replacing native resume body\n");
+	return 4;
+}
+#endif
+
 static int prepare_hook(struct ds_hook *hook)
 {
 	char symbol[KSYM_SYMBOL_LEN];
 	char *start, *end;
 	unsigned long offset, size;
+	int entry_offset = 0;
 	bool short_entry = false;
 
 	hook->patch_words = ARRAY_SIZE(hook->saved);
@@ -333,6 +375,17 @@ static int prepare_hook(struct ds_hook *hook)
 	if (!hook->address || (hook->address & 3) ||
 	    safe_read(hook->saved, (void *)hook->address, sizeof(hook->saved)))
 		return -ENOENT;
+
+#ifdef DS_USERNS_LIVE
+	entry_offset = setuid_chain_offset(hook);
+	if (entry_offset < 0)
+		return entry_offset;
+	if (entry_offset) {
+		hook->address += entry_offset;
+		if (safe_read(hook->saved, (void *)hook->address, sizeof(hook->saved)))
+			return -EFAULT;
+	}
+#endif
 	/* Direct entry branches preserve the host prefix. Local direct-call-only
 	 * functions can lack a KCFI word; compare hashes only for pointer slots.
 	 */
@@ -345,7 +398,7 @@ static int prepare_hook(struct ds_hook *hook)
 		return -EINVAL;
 	start = end + 1;
 	size = simple_strtoul(start, &end, 0);
-	if (end == start || offset || size < sizeof(hook->saved))
+	if (end == start || offset != entry_offset || size < entry_offset + sizeof(hook->saved))
 		return -EINVAL;
 	/* kallsyms size includes the next function's KCFI prefix. A short
 	 * return/tail-call may therefore leave fewer than 16 patchable bytes. */
@@ -362,7 +415,13 @@ static int prepare_hook(struct ds_hook *hook)
 					short_entry = true;
 					break;
 				}
-				pr_err("short entry %s cannot hold a branch\n", hook->name);
+				pr_err("short entry %s cannot hold a branch: %08x %08x %08x %08x\n",
+				       hook->name, hook->saved[0], hook->saved[1], hook->saved[2], hook->saved[3]);
+				if ((op & 0xfc000000) == 0x14000000) {
+					long delta = sign_extend64(op & 0x03ffffff, 25) * 4;
+					pr_err("entry branch destination: %pS\n",
+					       (void *)(hook->address + i * 4 + delta));
+				}
 				return -EOPNOTSUPP;
 			}
 		}

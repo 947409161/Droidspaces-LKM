@@ -1,10 +1,10 @@
 # PLZ110 user namespace 移植状态
 
-目标为 v0.1.2 的 Sandboxing，限定 PLZ110 当前内核与纯 LKM。
-当前已接入真实任务、凭据、身份映射、文件权限、exec 和多个 namespace 所有者，
-并通过实际 Bubblewrap 工作负载，但**尚未达到可发布的完整 Sandboxing**。
-实验载荷默认仅允许 QEMU；指定 PLZ110 内核另需显式 `userns_device_test=1` 才能手动测试。
-候选包已完成真机指纹核对和测试文件系统预检，尚未在手机加载；v0.1.2 尚未发布。
+v0.1.2 在 PLZ110 当前内核上通过纯 LKM 提供 Droidspaces Sandboxing。
+已在真机 SELinux Enforcing 下验证 UID/GID 映射、权限拒绝、生命周期和实际
+Droidspaces 容器内的三种 Bubblewrap 配置。没有刷写内核，也没有修改 Droidspaces 检测。
+本版本仍限定记录的设备与内核；完整 Linux USER_NS 等价性不在已验证范围内。
+安装、产物及限制见 [v0.1.2 发布说明](releases-v0.1.2.md)。
 
 ## 两种测试目标
 
@@ -16,7 +16,7 @@
 和已有 PID/IPC 移植整合。此目标安装原生函数入口及系统调用替换，接管真实任务，
 激活后固定在内核中直至重启。初始化在修改代码前检查目标内核及函数入口；
 默认拒绝非 `linux,dummy-virt` 机器。手动测试例外仅限记录的完整内核版本及
-`qcom,canoe`，同时要求 `userns_device_test=1`；测试加载脚本还核对完整 BTF 指纹与载荷 SHA256。
+`qcom,canoe`，同时要求 `userns_device_test=1`；v0.1.2 安装包显式传入此参数，并核对完整 BTF 指纹与载荷 SHA256。
 
 ## 已接入的实现
 
@@ -59,7 +59,7 @@ user namespace，复制对象继承原 mm 的所有者；失败回滚与最终�
 
 ## 已验证范围
 
-live VM 测试以真实非特权 UID 1000 运行，不通过伪造检测结果启用功能：
+live 测试在两颗内核的 QEMU 与 PLZ110 真机上，以真实非特权 UID 1000 运行，不通过伪造检测结果启用功能：
 
 - `clone(CLONE_NEWUSER)` 和 `unshare(CLONE_NEWUSER)` 创建不同 namespace。
 - 映射前返回 overflow ID；允许自身单 ID 映射，拒绝映射宿主 root。
@@ -98,17 +98,20 @@ live VM 测试以真实非特权 UID 1000 运行，不通过伪造检测结果�
 固定 GKI 和 PLZ110 原始 boot image 均用于 QEMU 回归；策略套件包含 22 个场景，另有 32 轮映射 FD 与退出竞态回归。
 Bubblewrap 测试先将 VM 的初始 rootfs 切换为普通 tmpfs 根；初始 rootfs 本身
 不支持 pivot_root，这一步不改变内核或绕过沙箱权限。VM 使用 `selinux=0`；
-这些结果不涵盖手机上的 Android SELinux 策略，也不等于完整 Sandbox 隔离证明。
+真机测试保持全局 SELinux Enforcing，测试从 KernelSU root 域启动并降到 UID 1000。
+这不代表其他 Android SELinux 域也允许所有操作，也不等于完整 Sandbox 隔离证明。
 独立核心的深度/配额/映射边界测试与 live 任务测试互补。
 
-## 发布前仍需完成
+## 真机兼容与验证边界
 
-- idmapped mount、更多降权/exec/文件能力组合。
-- 映射 FD 权限降级后的跨进程传递及更长期压力回归。
-- 其他 procfs/VFS/LSM、keyring 和网络路径中的内联 USER_NS 假设。
-- 扩展实际容器应用、网络与 namespace 长期存活回归。
-- 完整沙箱程序及负向隔离测试；不能仅凭 Droidspaces 的功能探测通过发布。
-- PLZ110 真机验证、开机加载模块、状态报告和 v0.1.2 制品打包。
+真机已有 HMA UID Fake 修改 `cap_task_fix_setuid` 入口。适配保留 HMA 的入口、
+包装函数及原始跳板，只在严格校验指令、目标地址和 CFI 类型后替换原生 +4 恢复点。
+两颗内核的 QEMU 均预加载实际 HMA 载荷并通过完整回归；真机保留 HMA 原有规则
+及 NoMount，全部策略测试与实际容器测试通过。不支持任意第三方跳板形状。
+
+仍未覆盖：idmapped mount；更多降权、exec 和文件能力组合；映射 FD 权限降级后的
+跨进程传递；其他 procfs/VFS/LSM/keyring/网络内联路径；长期高负载和更多实际应用。
+因此发布为指定设备的预发布版本，不声称与编译启用 CONFIG_USER_NS 的内核完全等价。
 
 没有采用统一返回允许的权限替代，也未修改 Droidspaces 的检查结果。
 不扩大到替换内核镜像。
@@ -134,10 +137,12 @@ DS_USERNS_DROIDSPACES=1 DS_USERNS_SANDBOX=all DS_USERNS_LOG_DIR=out/userns-live/
 VM 输入，再设置 `DS_USERNS_KERNEL`、`DS_USERNS_MODULE`、`DS_USERNS_LOG_DIR`。
 修改 vermagic 只为 VM 加载匹配，不代替 ABI 核验。
 
-本地 live 证据位于 `out/userns-live/validation.json`、`device-abi.json` 和
-`keyring-cgroup-fixed-vm/console.log`、`keyring-cgroup-fixed-device-vm/console.log`。验证清单记录测试源码、二进制、内核与日志哈希。
-上述日志也包含实际容器内的 Bubblewrap 回归；
-Droidspaces 源码提交、文件哈希、工具包版本及静态二进制记录在 `droidspaces-runtime/`。
+v0.1.2 的验证清单位于 `build/plz110-0.1.2.json`，打包后的 `validation.json`
+绑定源码、内核、二进制及日志哈希。本地完整日志位于 `out/userns-device-test/`：
+`hma-gki-vm/console.log`、`hma-plz110-vm/console.log`、
+`device-test-hma-loop-minor.log`、`device-pid-ipc.log`、`device-devtmpfs.log`
+及 `device-loader.log`。后者验证真实载荷校验、重复调用和功能检查，保留旧安装包作回退；
+未额外重启验证 ZIP 的整套开机时序。公开记录包含测试结果及证据摘要。
 BTF 比较核对聚合布局及可比较的导入函数原型，不能证明所有内联语义相容。
 已知设备额外保留字段涉及 `mm_struct`、`task_struct` 和 `files_struct`，
 没有改变本次比较的同名字段偏移或结构总大小；实验代码不读取这些设备私有字段。
@@ -145,12 +150,12 @@ BTF 比较核对聚合布局及可比较的导入函数原型，不能证明所�
 源码来源与适配说明见 [ORIGIN](../src/userns/ORIGIN)。
 如需重现已发布 v0.1.1，请使用对应标签；其打包器会拒绝本实验分支的修改后源码。
 
-## 真机候选测试包
+## 手动真机测试
 
 `out/userns-device-test/` 保存显式设备测试构建与两颗内核的完整 VM 回归。
 `tests/device/userns-load --check` 只核对目标、BTF 指纹、SELinux Enforcing 和载荷哈希；
 `--load` 才会经 ksud 加载，并拒绝已经存在的 namespace 模块。
-候选包不配置自动加载，不替换已安装的 v0.1.1。
+手动测试目录不配置自动加载。发布的 KernelSU ZIP 单独提供开机加载。
 
 `tests/device/userns-run --smoke` 已在 PLZ110 Enforcing 下通过：建立独立
 mount/network namespace，在专用 tmpfs 中解包测试环境，pivot_root 后从局部挂载树
@@ -159,4 +164,5 @@ mount/network namespace，在专用 tmpfs 中解包测试环境，pivot_root 后
 `--test` 在相同环境中运行身份/权限/生命周期、Bubblewrap 和专用 Droidspaces 容器测试。
 VM 导出的运行环境排除会关机的 `/init` 和 VM 模块加载器。
 
-真机当前仍运行 v0.1.1；替换固定在内核中的旧模块需要重启。
+真机已加载 v0.1.2 对应二进制并通过完整测试。替换固定在内核中的模块仍需要重启。
+测试用 loop 设备号从 sysfs 读取，兼容设备为分区预留的 minor 间隔。

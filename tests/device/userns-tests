@@ -4,15 +4,26 @@ set -eu
 export PATH=/bin
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys
+loop_device=
 cleanup() {
     /droidspaces --name=lkm-sandbox stop >/dev/null 2>&1 || true
     umount /test-ext4 2>/dev/null || true
+    [ -z "$loop_device" ] || losetup -d "$loop_device" 2>/dev/null || true
 }
 trap cleanup EXIT
 /userns-live-test
-mount -t ext4 -o loop /filecaps.ext4 /test-ext4
+loop_device=$(losetup -f)
+# Android can reserve multiple minor numbers per loop device for partitions.
+# Read its actual device number instead of assuming minor == loop index.
+IFS=: read -r loop_major loop_minor < "/sys/class/block/${loop_device##*/}/dev"
+rm -f "$loop_device"
+mknod "$loop_device" b "$loop_major" "$loop_minor"
+losetup "$loop_device" /filecaps.ext4
+mount -t ext4 "$loop_device" /test-ext4
 /userns-policy-test
 umount /test-ext4
+losetup -d "$loop_device"
+loop_device=
 /sandbox-test
 /sandbox-test --all
 host_limit=$(cat /proc/sys/user/max_user_namespaces)
