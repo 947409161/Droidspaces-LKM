@@ -1,0 +1,47 @@
+name: Build Android 13 5.15 GKI module
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/a13-5.15.119-build
+    paths:
+      - .github/workflows/build-android13-515.yml
+      - Makefile
+      - build/gki-targets.json
+      - scripts/build-gki.py
+      - scripts/prepare-gki-vm.py
+      - scripts/abi/**
+      - src/gki-target.h
+      - src/port515/**
+      - vendor/kallrecon/**
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Build pinned Android 13 5.15 module
+        run: python3 scripts/build-gki.py 5.15 -j2
+      - name: Prepare ABI comparison inputs
+        run: python3 scripts/prepare-gki-vm.py 5.15
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android13-5.15-abi-inputs
+          if-no-files-found: error
+          path: |
+            out/gki/android13-5.15/droidspaces_ns.ko
+            out/gki/android13-5.15/module.btf
+            out/gki/android13-5.15/kernel.btf
+            out/gki/android13-5.15/imports.txt
+            out/gki/android13-5.15/android13-5.15.abi
+            out/gki/android13-5.15/android13-5.15.audit.json
+            out/gki/android13-5.15/build.json
+            out/gki/android13-5.15/prepared.json
