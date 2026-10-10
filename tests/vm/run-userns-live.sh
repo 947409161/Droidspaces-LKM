@@ -5,10 +5,18 @@ log_dir=${DS_USERNS_LOG_DIR:-out/userns-live/vm}
 case "$log_dir" in out/*) ;; *) exit 2;; esac
 case "$log_dir" in *..*) exit 2;; esac
 mkdir -p "$root/$log_dir"
+export_root=${DS_USERNS_EXPORT_ROOT:-}
+if [ -n "$export_root" ]; then
+    case "$export_root" in out/*) ;; *) exit 2;; esac
+    case "$export_root" in *..*) exit 2;; esac
+    mkdir -p "$root/$(dirname "$export_root")"
+    export_root="/work/$export_root"
+fi
 status=0
 docker run --rm --platform linux/arm64 -v "$root:/work" \
     -e KERNEL="${DS_USERNS_KERNEL:-/work/out/gki/android16-6.12/Image}" \
     -e MODULE="${DS_USERNS_MODULE:-/work/out/userns-live/droidspaces_ns.ko}" \
+    -e EXPORT_ROOT="$export_root" \
     -e DROIDSPACES="${DS_USERNS_DROIDSPACES:-0}" \
     -e SANDBOX="${DS_USERNS_SANDBOX:-0}" \
     -e LOG="/work/$log_dir/console.log" \
@@ -85,6 +93,11 @@ docker run --rm --platform linux/arm64 -v "$root:/work" \
     cp /work/tests/vm/userns-live-init /tmp/root/init
     chmod +x /tmp/root/init
     mknod /tmp/root/dev/console c 5 1
+    if [ -n "$EXPORT_ROOT" ]; then
+        # Hardware tests invoke an explicit runner, never the VM poweroff init.
+        tar -C /tmp/root --exclude=./init --exclude=./namespaces.ko --exclude=./load-module -czf "$EXPORT_ROOT" .
+        cp /usr/bin/busybox "$EXPORT_ROOT.busybox"
+    fi
     cd /tmp/root
     find . -print0 | cpio --null -o --format=newc > /tmp/initramfs
     timeout 180 qemu-system-aarch64 -machine virt -cpu max -m 2048 -smp 2 \

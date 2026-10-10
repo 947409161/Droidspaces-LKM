@@ -29,6 +29,9 @@ module_param_cb(pid_live, &live_count_ops, &ds_pid_live, 0400);
 module_param_cb(ipc_live, &live_count_ops, &ds_ipc_live, 0400);
 module_param_cb(ipc_tasks, &live_count_ops, &ds_ipc_task_live, 0400);
 #ifdef DS_USERNS_LIVE
+static bool userns_device_test;
+module_param(userns_device_test, bool, 0400);
+MODULE_PARM_DESC(userns_device_test, "Opt into manual user namespace testing on the exact recorded PLZ110 kernel");
 static int userns_live_get(char *buffer, const struct kernel_param *param)
 {
 	return scnprintf(buffer, PAGE_SIZE, "%d\n", ds_userns_core_live());
@@ -51,9 +54,13 @@ static int __init ds_port_init(void)
 #ifdef DS_USERNS_LIVE
 	/* Symbol scanning in emulated device kernels needs headroom under load. */
 	hint.timeout_ms = 15000;
-	/* Until all inlined host paths are covered, activation is confined to VMs. */
-	if (!of_machine_is_compatible("linux,dummy-virt"))
-		return -EOPNOTSUPP;
+	/* Hardware testing is explicit and remains restricted to the recorded device. */
+	if (!of_machine_is_compatible("linux,dummy-virt")) {
+#ifndef DS_GKI_ANDROID
+		if (!device || !userns_device_test)
+#endif
+			return -EOPNOTSUPP;
+	}
 #endif
 
 #ifdef DS_GKI_ANDROID

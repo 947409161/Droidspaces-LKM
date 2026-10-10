@@ -1,0 +1,24 @@
+#!/bin/sh
+# Run only inside the disposable test root made by userns-run.
+set -eu
+export PATH=/bin
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+cleanup() {
+    /droidspaces --name=lkm-sandbox stop >/dev/null 2>&1 || true
+    umount /test-ext4 2>/dev/null || true
+}
+trap cleanup EXIT
+/userns-live-test
+mount -t ext4 -o loop /filecaps.ext4 /test-ext4
+/userns-policy-test
+umount /test-ext4
+/sandbox-test
+/sandbox-test --all
+host_limit=$(cat /proc/sys/user/max_user_namespaces)
+/sandbox-test --disable-userns
+test "$(cat /proc/sys/user/max_user_namespaces)" = "$host_limit"
+/droidspaces-sandbox
+sleep 1
+test "$(cat /sys/module/droidspaces_ns/parameters/userns_live)" = 0
+echo DS_USERNS_DEVICE_PASS

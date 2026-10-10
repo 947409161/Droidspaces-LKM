@@ -18,7 +18,7 @@ Adaptations:
   upstream map-write implementation and permission checks without adding
   /proc/<pid>/uid_map, switching a task namespace, or patching native entries.
 - Require one of the two recorded 6.12 VM kernels and linux,dummy-virt.
-  Real phone loading and Sandboxing activation are intentionally unavailable.
+  This restriction applies to TARGET=userns; the live target is described below.
 
 Additional source: Android common kernel, kernel/utsname.c
 Original UTS source SHA256: 436508ed5990edb5f032df8ad5963c537ed74d405c6f41b7375eed1486b921ca
@@ -34,8 +34,10 @@ Live VM target (TARGET=namespace USERNS=1):
   including statmount/listmount and sget/sget_fc inline destruction paths.
 - Restore arm64 identity/group syscalls and stat/statx mapping at output.
 - Keep native filesystem and LSM callbacks and permission checks.
-- Test real nonprivileged tasks in QEMU; reject phone activation pending complete
-  sandbox workload, lifetime, policy and device validation.
+- Test real nonprivileged tasks in QEMU. Live hardware testing requires the
+  exact recorded PLZ110 kernel and explicit userns_device_test=1; the manual
+  loader also checks the complete BTF fingerprint and payload hashes.
+  Hardware validation and release remain pending.
 
 Additional pinned DDK source hashes:
 kernel/ucount.c bccd471b035449aca9416f6dc7d3a85d2503c4edac0df183d2e83415fc6519ca

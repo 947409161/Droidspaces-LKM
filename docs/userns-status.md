@@ -3,7 +3,8 @@
 目标为 v0.1.2 的 Sandboxing，限定 PLZ110 当前内核与纯 LKM。
 当前已接入真实任务、凭据、身份映射、文件权限、exec 和多个 namespace 所有者，
 并通过实际 Bubblewrap 工作负载，但**尚未达到可发布的完整 Sandboxing**。
-实验载荷仅允许 QEMU，未在手机加载；v0.1.2 尚未发布。
+实验载荷默认仅允许 QEMU；指定 PLZ110 内核另需显式 `userns_device_test=1` 才能手动测试。
+候选包已完成真机指纹核对和测试文件系统预检，尚未在手机加载；v0.1.2 尚未发布。
 
 ## 两种测试目标
 
@@ -14,7 +15,8 @@
 `TARGET=namespace USERNS=1` 生成实验性的 `droidspaces_ns.ko`，把 user namespace
 和已有 PID/IPC 移植整合。此目标安装原生函数入口及系统调用替换，接管真实任务，
 激活后固定在内核中直至重启。初始化在修改代码前检查目标内核及函数入口；
-当前明确拒绝非 `linux,dummy-virt` 机器，不能把该实验构建直接拿到手机使用。
+默认拒绝非 `linux,dummy-virt` 机器。手动测试例外仅限记录的完整内核版本及
+`qcom,canoe`，同时要求 `userns_device_test=1`；测试加载脚本还核对完整 BTF 指纹与载荷 SHA256。
 
 ## 已接入的实现
 
@@ -142,3 +144,19 @@ BTF 比较核对聚合布局及可比较的导入函数原型，不能证明所�
 
 源码来源与适配说明见 [ORIGIN](../src/userns/ORIGIN)。
 如需重现已发布 v0.1.1，请使用对应标签；其打包器会拒绝本实验分支的修改后源码。
+
+## 真机候选测试包
+
+`out/userns-device-test/` 保存显式设备测试构建与两颗内核的完整 VM 回归。
+`tests/device/userns-load --check` 只核对目标、BTF 指纹、SELinux Enforcing 和载荷哈希；
+`--load` 才会经 ksud 加载，并拒绝已经存在的 namespace 模块。
+候选包不配置自动加载，不替换已安装的 v0.1.1。
+
+`tests/device/userns-run --smoke` 已在 PLZ110 Enforcing 下通过：建立独立
+mount/network namespace，在专用 tmpfs 中解包测试环境，pivot_root 后从局部挂载树
+卸载原 Android 根。该步骤不加载新 LKM、不运行 user namespace 测试。
+普通 chroot 会触发内核对创建 user namespace 的拒绝，因此使用真实的独立根挂载。
+`--test` 在相同环境中运行身份/权限/生命周期、Bubblewrap 和专用 Droidspaces 容器测试。
+VM 导出的运行环境排除会关机的 `/init` 和 VM 模块加载器。
+
+真机当前仍运行 v0.1.1；替换固定在内核中的旧模块需要重启。
