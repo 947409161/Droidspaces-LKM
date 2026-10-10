@@ -85,3 +85,19 @@ net/core/net_namespace.c f8d38b152ccf6718677ecf474bf89b9a864eca08700991dd40e5d9b
 kernel/cgroup/namespace.c b397809e577a47c34a0deca7647d62881e78ca7214ef52b98d0120a8475a395d
 fs/sysfs/mount.c eba2b807927f672cff64c58663ff5d02ffe29c604ef3e3223229e7a3b88837cb
 kernel/time/namespace.c 031af678ed780aa2125e5b7cc490362f9013756e37c2a79227dfb73ffd654d4b
+
+Socket credential integration:
+- Wrap native sk_getsockopt through its checked original prologue; restore
+  SO_PEERCRED and SO_PEERGROUPS mappings and retain all other options.
+- Port __scm_send credential validation and FD bookkeeping without relaxing
+  forged-identity, unmapped-ID, io_uring or LSM restrictions.
+- Port Unix stream/datagram/seqpacket receive paths and Netlink receive to
+  restore inlined SCM_CREDENTIALS mapping. Include both Unix datagram callers
+  because the PLZ110 compiler inlines __unix_dgram_recvmsg into them.
+- Test local/cross-namespace identities, supplementary groups, rejected forged
+  credentials, and SCM_RIGHTS peek, close-on-exec and truncated-control cleanup.
+net/core/sock.c b21109ba79a53d7f2bfbf984ddd92bd2cf746b1562b0e5ed8283f66f130b63f9
+net/core/scm.c 5effc14f500ec38f0227ae596d78fb3ffc9b6a5d6cc2852b130f62b53b6eea0f
+include/net/scm.h 9f391c256fd525f3f3517a772a1e3c7fdde8eb7237bb7aa1271eecffe39a4235
+net/unix/af_unix.c ab0262c8202f028907d9dee08e1d400d8433273b249fcf9dbcc5eb07adb302b7
+net/netlink/af_netlink.c 8e38304ca5e3f82d1167e59c28cd6fd6a4168c1f6e11e915e4959eb4be0e8079

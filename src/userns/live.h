@@ -3,6 +3,7 @@
 #define DS_USERNS_LIVE_H
 #include "test.h"
 #include <linux/fs.h>
+#include <linux/sockptr.h>
 #include <linux/fs_context.h>
 void ds_userns_put_cred_rcu(struct rcu_head *rcu);
 int ds_userns_proc_prepare(void);
@@ -59,4 +60,16 @@ struct nsproxy;
 void ds_userns_timens_put(struct ns_common *);
 int ds_userns_timens_install(struct nsset *, struct ns_common *);
 void ds_userns_timens_on_fork(struct nsproxy *, struct task_struct *);
+struct sock;
+struct socket;
+struct msghdr;
+struct scm_cookie;
+struct unix_stream_read_state;
+int ds_userns_sk_getsockopt(struct sock *, int, int, sockptr_t, sockptr_t);
+int ds_userns_scm_send(struct socket *, struct msghdr *, struct scm_cookie *);
+int ds_userns_unix_dgram_recvmsg(struct sock *, struct msghdr *, size_t, int);
+int ds_userns_unix_stream_read_generic(struct unix_stream_read_state *, bool);
+int ds_userns_unix_dgram_recvmsg_entry(struct socket *, struct msghdr *, size_t, int);
+int ds_userns_unix_seqpacket_recvmsg(struct socket *, struct msghdr *, size_t, int);
+int ds_userns_netlink_recvmsg(struct socket *, struct msghdr *, size_t, int);
 #endif

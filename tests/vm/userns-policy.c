@@ -18,6 +18,9 @@
 #include <sys/xattr.h>
 #include <endian.h>
 #include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <linux/netlink.h>
+#include <grp.h>
 #include <linux/nsfs.h>
 #include <linux/seccomp.h>
 #include <linux/filter.h>
@@ -190,6 +193,134 @@ static void seccomp_policy(void)
     CHECK(syscall(SYS_getpid)>0);
     CHECK(prctl(PR_SET_NO_NEW_PRIVS,0,0,0,0)==-1 && errno==EINVAL);
 }
+static void socket_rights(int sockets[2])
+{
+    int pipefd[2],received[2],zero=0; char byte='r';
+    CHECK(pipe2(pipefd,O_CLOEXEC)==0);
+    CHECK(setsockopt(sockets[1],SOL_SOCKET,SO_PASSCRED,&zero,sizeof(zero))==0);
+    union { struct cmsghdr align; char data[CMSG_SPACE(sizeof(int))]; } control={0};
+    struct iovec iov={.iov_base=&byte,.iov_len=1};
+    struct msghdr msg={.msg_iov=&iov,.msg_iovlen=1,.msg_control=control.data,.msg_controllen=sizeof(control.data)};
+    struct cmsghdr *c=CMSG_FIRSTHDR(&msg);
+    c->cmsg_level=SOL_SOCKET; c->cmsg_type=SCM_RIGHTS; c->cmsg_len=CMSG_LEN(sizeof(int));
+    memcpy(CMSG_DATA(c),&pipefd[0],sizeof(int));
+    CHECK(sendmsg(sockets[0],&msg,0)==1);
+    for (int i=0;i<2;i++) {
+        memset(&control,0,sizeof(control));
+        msg.msg_controllen=sizeof(control.data); msg.msg_flags=0;
+        CHECK(recvmsg(sockets[1],&msg,MSG_CMSG_CLOEXEC|(i ? 0 : MSG_PEEK))==1);
+        CHECK(!(msg.msg_flags&MSG_CTRUNC));
+        c=CMSG_FIRSTHDR(&msg);
+        CHECK(c && c->cmsg_level==SOL_SOCKET && c->cmsg_type==SCM_RIGHTS);
+        memcpy(&received[i],CMSG_DATA(c),sizeof(int));
+        CHECK(fcntl(received[i],F_GETFD)&FD_CLOEXEC);
+    }
+    CHECK(received[0]!=received[1]);
+    close(received[0]); close(pipefd[0]);
+    CHECK(write(pipefd[1],"p",1)==1 && read(received[1],&byte,1)==1 && byte=='p');
+    c=CMSG_FIRSTHDR(&msg); c->cmsg_len=CMSG_LEN(sizeof(int));
+    memcpy(CMSG_DATA(c),&received[1],sizeof(int));
+    msg.msg_controllen=sizeof(control.data); msg.msg_flags=0;
+    CHECK(sendmsg(sockets[0],&msg,0)==1);
+    msg.msg_control=NULL; msg.msg_controllen=0;
+    CHECK(recvmsg(sockets[1],&msg,0)==1 && (msg.msg_flags&MSG_CTRUNC));
+    close(received[1]); close(pipefd[1]);
+}
+static void socket_policy(void)
+{
+    gid_t groups[2]={0,1};
+    CHECK(setgroups(2,groups)==0);
+    const int types[]={SOCK_STREAM,SOCK_DGRAM,SOCK_SEQPACKET};
+    for (unsigned t=0;t<sizeof(types)/sizeof(types[0]);t++) {
+        int type=types[t];
+        int sockets[2],one=1; struct ucred peer;
+        socklen_t length=sizeof(peer);
+        CHECK(socketpair(AF_UNIX,type,0,sockets)==0);
+        CHECK(getsockopt(sockets[0],SOL_SOCKET,SO_PEERCRED,&peer,&length)==0);
+        dprintf(1,"SOCKET_PEER: pid=%d uid=%u gid=%u expected=%d/0/0\n",peer.pid,peer.uid,peer.gid,getpid());
+        CHECK(length==sizeof(peer) && peer.pid==getpid() && peer.uid==0 && peer.gid==0);
+        gid_t peers[2]={65534,65534}; length=sizeof(peers);
+        CHECK(getsockopt(sockets[0],SOL_SOCKET,SO_PEERGROUPS,peers,&length)==0);
+        CHECK(length==sizeof(peers) && peers[0]==0 && peers[1]==1);
+        length=sizeof(gid_t);
+        CHECK(getsockopt(sockets[0],SOL_SOCKET,SO_PEERGROUPS,peers,&length)==-1 && errno==ERANGE && length==sizeof(peers));
+        CHECK(setsockopt(sockets[1],SOL_SOCKET,SO_PASSCRED,&one,sizeof(one))==0);
+        for (int explicit=0;explicit<2;explicit++) {
+            char byte='s';
+            union { struct cmsghdr align; char data[CMSG_SPACE(sizeof(struct ucred))]; } control={0};
+            struct iovec iov={.iov_base=&byte,.iov_len=1};
+            struct msghdr msg={.msg_iov=&iov,.msg_iovlen=1};
+            if (explicit) {
+                msg.msg_control=control.data; msg.msg_controllen=sizeof(control.data);
+                struct cmsghdr *c=CMSG_FIRSTHDR(&msg);
+                c->cmsg_level=SOL_SOCKET; c->cmsg_type=SCM_CREDENTIALS;
+                c->cmsg_len=CMSG_LEN(sizeof(struct ucred));
+                struct ucred own={.pid=getpid(),.uid=0,.gid=0};
+                memcpy(CMSG_DATA(c),&own,sizeof(own));
+            }
+            CHECK(sendmsg(sockets[0],&msg,0)==1);
+            memset(&control,0,sizeof(control));
+            msg.msg_control=control.data; msg.msg_controllen=sizeof(control.data);
+            CHECK(recvmsg(sockets[1],&msg,0)==1 && !(msg.msg_flags&MSG_CTRUNC));
+            struct cmsghdr *c=CMSG_FIRSTHDR(&msg);
+            CHECK(c && c->cmsg_level==SOL_SOCKET && c->cmsg_type==SCM_CREDENTIALS);
+            memcpy(&peer,CMSG_DATA(c),sizeof(peer));
+            dprintf(1,"SOCKET_CMSG: type=%d explicit=%d pid=%d uid=%u gid=%u\n",type,explicit,peer.pid,peer.uid,peer.gid);
+            CHECK(peer.pid==getpid() && peer.uid==0 && peer.gid==0);
+        }
+        /* Unmapped claims must be rejected before any message is queued. */
+        char byte='f';
+        union { struct cmsghdr align; char data[CMSG_SPACE(sizeof(struct ucred))]; } control={0};
+        struct iovec iov={.iov_base=&byte,.iov_len=1};
+        struct msghdr msg={.msg_iov=&iov,.msg_iovlen=1,.msg_control=control.data,.msg_controllen=sizeof(control.data)};
+        struct cmsghdr *c=CMSG_FIRSTHDR(&msg);
+        c->cmsg_level=SOL_SOCKET; c->cmsg_type=SCM_CREDENTIALS;
+        c->cmsg_len=CMSG_LEN(sizeof(struct ucred));
+        struct ucred claim={.pid=getpid(),.uid=2,.gid=0};
+        memcpy(CMSG_DATA(c),&claim,sizeof(claim));
+        CHECK(sendmsg(sockets[0],&msg,MSG_DONTWAIT)==-1 && errno==EINVAL);
+        pid_t unpriv=fork();
+        CHECK(unpriv>=0);
+        if (!unpriv) {
+            CHECK(setresgid(1,1,1)==0 && setresuid(1,1,1)==0);
+            claim.pid=getpid(); claim.uid=0;
+            memcpy(CMSG_DATA(c),&claim,sizeof(claim));
+            CHECK(sendmsg(sockets[0],&msg,MSG_DONTWAIT)==-1 && errno==EPERM);
+            _exit(0);
+        }
+        wait_ok(unpriv);
+        CHECK(recv(sockets[1],&byte,1,MSG_DONTWAIT)==-1 && (errno==EAGAIN || errno==EWOULDBLOCK));
+        socket_rights(sockets);
+        close(sockets[0]); close(sockets[1]);
+    }
+}
+static void receive_identity(int fd, uid_t uid, gid_t gid, pid_t pid)
+{
+    char byte=0; struct ucred peer;
+    union { struct cmsghdr align; char data[CMSG_SPACE(sizeof(peer))]; } control={0};
+    struct iovec iov={.iov_base=&byte,.iov_len=1};
+    struct msghdr msg={.msg_iov=&iov,.msg_iovlen=1,.msg_control=control.data,.msg_controllen=sizeof(control.data)};
+    CHECK(recvmsg(fd,&msg,0)==1 && !(msg.msg_flags&MSG_CTRUNC));
+    struct cmsghdr *c=CMSG_FIRSTHDR(&msg);
+    CHECK(c && c->cmsg_level==SOL_SOCKET && c->cmsg_type==SCM_CREDENTIALS);
+    memcpy(&peer,CMSG_DATA(c),sizeof(peer));
+    CHECK(peer.uid==uid && peer.gid==gid && peer.pid==pid);
+}
+static void netlink_policy(void)
+{
+    int fd[2],one=1;
+    struct sockaddr_nl addr[2]={{.nl_family=AF_NETLINK},{.nl_family=AF_NETLINK}};
+    for (int i=0;i<2;i++) {
+        socklen_t size=sizeof(addr[i]);
+        fd[i]=socket(AF_NETLINK,SOCK_DGRAM,NETLINK_USERSOCK);
+        CHECK(fd[i]>=0 && bind(fd[i],(struct sockaddr *)&addr[i],sizeof(addr[i]))==0);
+        CHECK(getsockname(fd[i],(struct sockaddr *)&addr[i],&size)==0);
+    }
+    CHECK(setsockopt(fd[1],SOL_SOCKET,SO_PASSCRED,&one,sizeof(one))==0);
+    CHECK(sendto(fd[0],"n",1,0,(struct sockaddr *)&addr[1],sizeof(addr[1]))==1);
+    receive_identity(fd[1],0,0,getpid());
+    close(fd[0]);close(fd[1]);
+}
 static void policy_case(int mode)
 {
     int ready[2],go[2]; char byte=0;
@@ -197,9 +328,17 @@ static void policy_case(int mode)
     int host_ns=open("/proc/self/ns/user",O_RDONLY);
     CHECK(host_ns>=0);
     CHECK(pipe(ready)==0 && pipe(go)==0);
+    int cross[2]={-1,-1}; pid_t host_pid=getpid();
+    if (mode==18) {
+        int one=1;
+        CHECK(socketpair(AF_UNIX,SOCK_DGRAM,0,cross)==0);
+        CHECK(setsockopt(cross[0],SOL_SOCKET,SO_PASSCRED,&one,sizeof(one))==0);
+        CHECK(setsockopt(cross[1],SOL_SOCKET,SO_PASSCRED,&one,sizeof(one))==0);
+    }
     pid_t child=fork();
     CHECK(child>=0);
     if (!child) {
+        if (mode==18) close(cross[0]);
         close(ready[0]); close(go[1]);
         CHECK(setgid(1000)==0 && setuid(1000)==0);
         CHECK(prctl(PR_SET_DUMPABLE,1)==0);
@@ -216,7 +355,18 @@ static void policy_case(int mode)
         CHECK(unshare(CLONE_NEWUTS)==0);
         CHECK(caps(0)&(UINT64_C(1)<<CAP_SYS_ADMIN));
         host_file_denied();
-        if (mode==16) {
+        if (mode==19) {
+            netlink_policy();
+        } else if (mode==18) {
+            struct ucred peer; socklen_t size=sizeof(peer);
+            CHECK(getsockopt(cross[1],SOL_SOCKET,SO_PEERCRED,&peer,&size)==0);
+            CHECK(peer.uid==65534 && peer.gid==65534 && peer.pid==host_pid);
+            receive_identity(cross[1],65534,65534,host_pid);
+            CHECK(send(cross[1],&byte,1,0)==1);
+            close(cross[1]);
+        } else if (mode==17) {
+            socket_policy();
+        } else if (mode==16) {
             seccomp_policy();
         } else if (mode==15) {
             CHECK(unshare(CLONE_NEWNET|CLONE_NEWCGROUP|CLONE_NEWTIME)==0);
@@ -264,6 +414,7 @@ static void policy_case(int mode)
         }
         _exit(0);
     }
+    if (mode==18) close(cross[1]);
     close(ready[1]); close(go[0]);
     CHECK(read(ready[0],&byte,1)==1);
     map_child(child,"uid_map"); map_child(child,"gid_map");
@@ -289,6 +440,11 @@ static void policy_case(int mode)
     }
     close(host_ns);
     CHECK(write(go[1],&byte,1)==1);
+    if (mode==18) {
+        CHECK(send(cross[0],&byte,1,0)==1);
+        receive_identity(cross[0],1000,1000,child);
+        close(cross[0]);
+    }
     int retained[3]={-1,-1,-1};
     if (mode==15) {
         const char *names[]={"net","cgroup","time_for_children"};
@@ -345,7 +501,7 @@ int main(int argc,char **argv)
         } else after_exec(argv[1]);
         return 0;
     }
-    for (int i=0;i<17;i++) policy_case(i);
+    for (int i=0;i<20;i++) policy_case(i);
     for (int i=0;i<8;i++) policy_case(15);
     puts("DS_USERNS_POLICY_PASS: mapped privilege drop, effective/fs UID, exec, keepcaps, unmapped/mapped set-ID, no-new-privs, mm ownership, thread exec, setns, VFS, quotas, filecaps and retained namespace owners");
     return 0;
