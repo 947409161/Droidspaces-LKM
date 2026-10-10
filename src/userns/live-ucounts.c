@@ -234,3 +234,13 @@ bool is_rlimit_overlimit(struct ucounts *ucounts, enum rlimit_type type, unsigne
 	return false;
 }
 
+
+/* Native callbacks were constant-folded to init_user_ns with USER_NS=n. */
+struct ctl_table_set *ds_userns_set_lookup(struct ctl_table_root *root)
+{
+	return &current_user_ns()->set;
+}
+int ds_userns_set_is_seen(struct ctl_table_set *set)
+{
+	return &current_user_ns()->set == set;
+}

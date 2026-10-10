@@ -47,3 +47,41 @@ kernel/sys.c 24f4a0073a35b14906fcdb99a96e9e2a473f356b6e97b648691979a7a4d9f6ef
 kernel/groups.c 291143c91266a69bc84216d7ea58597647cbbaa3ba400c79237b59dfd024b3ce
 fs/stat.c 53cafc68502adbf426a7d38827bbb52e0cb4b57c0cc772a759073706964fb587
 include/linux/user_namespace.h 4aa7d8fd93f3ee93da17b384820deaf27e7b77cd00796ed9d60bebdbc87aab72
+
+Capability and exec/mm integration:
+- Port namespace-aware set-ID capability transitions, exec capability calculation
+  and file capability reads from commoncap.c; retain the normal LSM dispatch.
+- Port begin_new_exec's inlined helpers and would_dump to restore unmapped
+  set-ID rejection and mm namespace bounds, including non-leader thread exec.
+- Wrap the checked native mm_init prologue, recovering ownership from zeroed or
+  copied input objects because the USER_NS argument is compiled out at callers.
+  Port __mmdrop with its native checks, Android hooks and namespace release.
+- Runtime tests cover mapped/unmapped set-ID, keepcaps, no-new-privs, mm ptrace,
+  non-leader thread exec, setns ancestry and an actual Bubblewrap workload.
+security/commoncap.c f8dba4df187cd446bc336dfeed000b41bdd0a9afd8b8d985d9c9d502cec587d7
+fs/exec.c 2c0f1edc537abe68111e36a3e4ffb1b8fc57607ed8f216acfa1f621784817dd5
+kernel/fork.c 3b1374fe8a7a3a46bcbcbf41e2b1b88deb0f6f898f49ab2cc41dd8a242aad5a2
+
+VFS, proc, nsfs and namespace ownership integration:
+- Restore namespace-aware access/chown/chroot and inode capability policy.
+- Convert both file capability reads and writes; test v3 root IDs on ext4 and
+  confirm the same executable cannot elevate an ordinary host user.
+- Keep the native user sysctl table and replace lookup/visibility semantics;
+  use a checked callback pointer for the 12-byte lookup function.
+- Restore proc status's opener identity view and cgroup/time ownership and
+  lifetime handling, including inlined time namespace put callers.
+- Restore sysfs context and network inode ownership; resolve sysfs_root via
+  sysfs_root_kn to avoid duplicate private symbol names.
+- Wrap nsfs ioctls with a checked original prologue; handle USER_NS-dependent
+  queries and keep other native operations.
+- Short entry patches use 12-byte ADRP/ADD/BR only within architectural range;
+  never touch an adjacent KCFI prefix. Smaller entries are rejected.
+fs/open.c dde41931c625e7eeff9c383af5bf55d40c3450e4c74e43d25352cf353d2b1874
+kernel/capability.c 3efa66fe89f42326bdacc61360dc6c26d29cb8fb7e0b0fd671c030e0465c82e8
+fs/inode.c 05f309ce7b528600851e52fbf676e78b93691c0512da0815722041517279deda
+fs/nsfs.c 00352d816aada15622fae9da72b7c749abc26539534cbe649ef4f4a172784080
+fs/proc/array.c 6ca3167e03a2adb7eb512489d40722023344cd779a6cf039419f7a1be936194a
+net/core/net_namespace.c f8d38b152ccf6718677ecf474bf89b9a864eca08700991dd40e5d9b13a1e1cdc
+kernel/cgroup/namespace.c b397809e577a47c34a0deca7647d62881e78ca7214ef52b98d0120a8475a395d
+fs/sysfs/mount.c eba2b807927f672cff64c58663ff5d02ffe29c604ef3e3223229e7a3b88837cb
+kernel/time/namespace.c 031af678ed780aa2125e5b7cc490362f9013756e37c2a79227dfb73ffd654d4b

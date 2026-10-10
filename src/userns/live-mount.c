@@ -862,3 +862,17 @@ SYSCALL_DEFINE4(ds_listmount, const struct mnt_id_req __user *, req,
 	return ret;
 }
 
+
+bool ds_userns_mnt_may_suid(struct vfsmount *mnt)
+{
+	/*
+	 * Foreign mounts (accessed via fchdir or through /proc
+	 * symlinks) are always treated as if they are nosuid.  This
+	 * prevents namespaces from trusting potentially unsafe
+	 * suid/sgid bits, file caps, or security labels that originate
+	 * in other namespaces.
+	 */
+	return !(mnt->mnt_flags & MNT_NOSUID) && (real_mount(mnt)->mnt_ns == current->nsproxy->mnt_ns) &&
+	       current_in_userns(mnt->mnt_sb->s_user_ns);
+}
+

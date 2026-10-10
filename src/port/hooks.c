@@ -19,6 +19,7 @@
 #include "ipc-backend.h"
 #ifdef DS_USERNS_LIVE
 #include "../userns/live.h"
+extern u32 ds_userns_mm_init_original[], ds_userns_ns_ioctl_original[];
 #include <linux/user_namespace.h>
 #include <linux/utsname.h>
 #endif
@@ -50,7 +51,11 @@ struct ds_pointer_hook {
 	unsigned long *slot;
 	unsigned long saved, replacement;
 };
-static struct ds_pointer_hook bpf_hooks[6];
+#ifdef DS_USERNS_LIVE
+static struct ds_pointer_hook callback_hooks[7];
+#else
+static struct ds_pointer_hook callback_hooks[6];
+#endif
 
 static bool matching_cfi(unsigned long native, unsigned long replacement)
 {
@@ -70,13 +75,13 @@ static int write_pointer(unsigned long *slot, unsigned long value)
 	return ret ? ret : aarch64_insn_patch_text_nosync(words + 1, upper_32_bits(value));
 }
 
-static int prepare_bpf_hooks(void)
+static int prepare_callback_hooks(void)
 {
 	static const char *const names[] = { "task_seq_info", "task_file_seq_info", "task_vma_seq_info" };
 	unsigned int i;
 	for (i = 0; i < ARRAY_SIZE(names); i++) {
 		struct bpf_iter_seq_info *info = (void *)kallsyms_name_to_addr(names[i]);
-		struct ds_pointer_hook *init = &bpf_hooks[i * 2], *fini = init + 1;
+		struct ds_pointer_hook *init = &callback_hooks[i * 2], *fini = init + 1;
 		if (!info)
 			return -ENOENT;
 		init->slot = (void *)&info->init_seq_private;
@@ -92,6 +97,22 @@ static int prepare_bpf_hooks(void)
 		    !matching_cfi(fini->saved, fini->replacement))
 			return -EPROTOTYPE;
 	}
+#ifdef DS_USERNS_LIVE
+	{
+		struct ctl_table_header *header = init_user_ns.sysctls;
+		struct ctl_table_root *root;
+		struct ds_pointer_hook *hook = &callback_hooks[6];
+		if (!header || safe_read(&root, &header->root, sizeof(root)) || !root)
+			return -EINVAL;
+		hook->slot = (void *)&root->lookup;
+		if (safe_read(&hook->saved, hook->slot, sizeof(hook->saved)) ||
+		    hook->saved != kallsyms_name_to_addr("set_lookup"))
+			return -EINVAL;
+		hook->replacement = (unsigned long)ds_userns_set_lookup;
+		if (!matching_cfi(hook->saved, hook->replacement))
+			return -EPROTOTYPE;
+	}
+#endif
 	return 0;
 }
 
@@ -117,6 +138,7 @@ DECLARE_IPC_SYSCALL(mq_getsetattr);
 DECLARE_IPC_SYSCALL(reboot);
 DECLARE_IPC_SYSCALL(memfd_create);
 #ifdef DS_USERNS_LIVE
+DECLARE_IPC_SYSCALL(chroot);
 DECLARE_IPC_SYSCALL(newfstat);
 DECLARE_IPC_SYSCALL(newfstatat);
 DECLARE_IPC_SYSCALL(setregid);
@@ -153,6 +175,7 @@ static struct ds_syscall_hook ipc_syscalls[] = {
 	IPC_SYSCALL(mq_timedreceive), IPC_SYSCALL(mq_notify), IPC_SYSCALL(mq_getsetattr),
 	IPC_SYSCALL(reboot), IPC_SYSCALL(memfd_create),
 #ifdef DS_USERNS_LIVE
+	IPC_SYSCALL(chroot),
 	IPC_SYSCALL(setregid),
 	IPC_SYSCALL(setgid),
 	IPC_SYSCALL(setreuid),
@@ -186,14 +209,42 @@ struct ds_hook {
 	u32 saved[4];
 	u32 patch[4];
 	u32 *original;
+	unsigned int patch_words;
 };
 
-#define HOOK(name, target) { name, (unsigned long)(target), 0, { 0 }, { 0 }, NULL }
-#define HOOK_ORIGINAL(name, target, original) { name, (unsigned long)(target), 0, { 0 }, { 0 }, original }
+#define HOOK(name, target) { name, (unsigned long)(target), 0, { 0 }, { 0 }, NULL, 4 }
+#define HOOK_ORIGINAL(name, target, original) { name, (unsigned long)(target), 0, { 0 }, { 0 }, original, 4 }
 static struct ds_hook hooks[] = {
 #ifdef DS_USERNS_LIVE
+	HOOK("copy_cgroup_ns", ds_userns_copy_cgroup_ns),
+	HOOK("free_cgroup_ns", ds_userns_free_cgroup_ns),
+	HOOK("copy_time_ns", ds_userns_copy_time_ns),
+	HOOK("timens_put", ds_userns_timens_put),
+	HOOK("timens_install", ds_userns_timens_install),
+	HOOK("timens_on_fork", ds_userns_timens_on_fork),
+	HOOK("free_time_ns", ds_userns_free_time_ns),
+	HOOK("sysfs_init_fs_context", ds_userns_sysfs_init_fs_context),
+	HOOK_ORIGINAL("ns_ioctl", ds_userns_ns_ioctl, ds_userns_ns_ioctl_original),
+	HOOK("net_ns_get_ownership", ds_userns_net_ns_get_ownership),
+	HOOK_ORIGINAL("mm_init", ds_userns_mm_init, ds_userns_mm_init_original),
+	HOOK("__mmdrop", ds_userns_mmdrop),
+	HOOK("begin_new_exec", ds_userns_begin_new_exec),
+	HOOK("would_dump", ds_userns_would_dump),
+	HOOK("cap_task_fix_setuid", ds_userns_cap_task_fix_setuid),
+	HOOK("cap_bprm_creds_from_file", ds_userns_cap_bprm_creds_from_file),
+	HOOK("cap_inode_getsecurity", ds_userns_cap_inode_getsecurity),
+	HOOK("cap_convert_nscap", ds_userns_cap_convert_nscap),
+	HOOK("get_vfs_caps_from_disk", ds_userns_get_vfs_caps_from_disk),
+	HOOK("mnt_may_suid", ds_userns_mnt_may_suid),
 	HOOK("__arm64_sys_newfstat", __arm64_sys_ds_newfstat),
 	HOOK("__arm64_sys_newfstatat", __arm64_sys_ds_newfstatat),
+	HOOK("do_faccessat", ds_userns_do_faccessat),
+	HOOK("chown_common", ds_userns_chown_common),
+	HOOK("privileged_wrt_inode_uidgid", ds_userns_privileged_wrt_inode_uidgid),
+	HOOK("capable_wrt_inode_uidgid", ds_userns_capable_wrt_inode_uidgid),
+	HOOK("inode_owner_or_capable", ds_userns_inode_owner_or_capable),
+	HOOK("set_is_seen", ds_userns_set_is_seen),
+	HOOK("proc_pid_status", ds_userns_proc_pid_status),
 	HOOK("cp_statx", ds_userns_cp_statx),
 	HOOK("alloc_fs_context", ds_userns_alloc_fs_context),
 	HOOK("vfs_dup_fs_context", ds_userns_vfs_dup_fs_context),
@@ -266,7 +317,9 @@ static int prepare_hook(struct ds_hook *hook)
 	char symbol[KSYM_SYMBOL_LEN];
 	char *start, *end;
 	unsigned long offset, size;
+	bool short_entry = false;
 
+	hook->patch_words = ARRAY_SIZE(hook->saved);
 	hook->address = kallsyms_name_to_addr(hook->name);
 	if (!hook->address || (hook->address & 3) ||
 	    safe_read(hook->saved, (void *)hook->address, sizeof(hook->saved)))
@@ -285,6 +338,26 @@ static int prepare_hook(struct ds_hook *hook)
 	size = simple_strtoul(start, &end, 0);
 	if (end == start || offset || size < sizeof(hook->saved))
 		return -EINVAL;
+	/* kallsyms size includes the next function's KCFI prefix. A short
+	 * return/tail-call may therefore leave fewer than 16 patchable bytes. */
+	{
+		unsigned int i;
+		for (i = 0; i + 1 < ARRAY_SIZE(hook->saved); i++) {
+			u32 op = hook->saved[i];
+			if ((op & 0xfffffc1f) == 0xd65f0000 ||
+			    op == 0xd65f0bff || op == 0xd65f0fff ||
+			    (op & 0xfc000000) == 0x14000000) {
+				/* A 12-byte leaf can use ADRP/ADD/BR within 4 GiB.
+				 * Keep the fourth word (often the next KCFI hash). */
+				if (i == 2 && !hook->original) {
+					short_entry = true;
+					break;
+				}
+				pr_err("short entry %s cannot hold a branch\n", hook->name);
+				return -EOPNOTSUPP;
+			}
+		}
+	}
 	if (hook->original) {
 		unsigned int i;
 		for (i = 0; i < ARRAY_SIZE(hook->saved); i++) {
@@ -294,6 +367,19 @@ static int prepare_hook(struct ds_hook *hook)
 				return -EOPNOTSUPP;
 			}
 		}
+	}
+	if (short_entry) {
+		s64 pages = ((s64)(hook->replacement & PAGE_MASK) -
+			     (s64)(hook->address & PAGE_MASK)) >> PAGE_SHIFT;
+		u32 imm;
+		if (PAGE_SHIFT != 12 || pages < -(1L << 20) || pages >= (1L << 20))
+			return -ERANGE;
+		imm = (u32)pages & 0x1fffff;
+		hook->patch[0] = 0x90000010 | ((imm & 3) << 29) | ((imm >> 2) << 5);
+		hook->patch[1] = 0x91000210 | ((hook->replacement & 0xfff) << 10);
+		hook->patch[2] = 0xd61f0200;
+		hook->patch_words = 3;
+		return 0;
 	}
 	/* ldr x16, .+8; br x16; .quad destination. CFI type prefixes stay intact. */
 	hook->patch[0] = 0x58000050;
@@ -308,7 +394,7 @@ static int write_hook(struct ds_hook *hook, bool restore)
 	unsigned int i;
 	int ret;
 
-	for (i = 0; i < ARRAY_SIZE(hook->saved); i++) {
+	for (i = 0; i < hook->patch_words; i++) {
 		ret = aarch64_insn_patch_text_nosync((void *)(hook->address + i * 4),
 					 restore ? hook->saved[i] : hook->patch[i]);
 		if (ret)
@@ -358,8 +444,8 @@ static int install_stopped(void *unused)
 		}
 	}
 	WRITE_ONCE(ds_ipc_active, true);
-	for (i = 0; i < ARRAY_SIZE(bpf_hooks); i++) {
-		ret = write_pointer(bpf_hooks[i].slot, bpf_hooks[i].replacement);
+	for (i = 0; i < ARRAY_SIZE(callback_hooks); i++) {
+		ret = write_pointer(callback_hooks[i].slot, callback_hooks[i].replacement);
 		if (ret) {
 			WRITE_ONCE(ds_ipc_active, false);
 			WRITE_ONCE(init_pid_ns.ns.ops, NULL);
@@ -372,9 +458,9 @@ static int install_stopped(void *unused)
 	return 0;
 
 rollback:
-	for (i = 0; i < ARRAY_SIZE(bpf_hooks); i++)
-		if (write_pointer(bpf_hooks[i].slot, bpf_hooks[i].saved))
-			panic("droidspaces_ns: BPF rollback failed");
+	for (i = 0; i < ARRAY_SIZE(callback_hooks); i++)
+		if (write_pointer(callback_hooks[i].slot, callback_hooks[i].saved))
+			panic("droidspaces_ns: callback rollback failed");
 	for (i = 0; i < ARRAY_SIZE(ipc_syscalls); i++)
 		if (write_syscall(&ipc_syscalls[i], true))
 			panic("droidspaces_ns: syscall rollback failed");
@@ -395,7 +481,7 @@ int ds_hooks_prepare(void)
 
 	if (IS_ENABLED(CONFIG_ARM64_BTI_KERNEL) || init_pid_ns.ns.ops)
 		return -EOPNOTSUPP;
-	ret = prepare_bpf_hooks();
+	ret = prepare_callback_hooks();
 	if (ret)
 		return ret;
 	syscall_table = (void *)kallsyms_name_to_addr("sys_call_table");
@@ -433,8 +519,8 @@ int ds_hooks_prepare(void)
 		if (ret)
 			return ret;
 	}
-	pr_info("entry preflight passed: %zu functions, %zu syscalls, %zu BPF callbacks; no patches written\n",
-		ARRAY_SIZE(hooks) + ARRAY_SIZE(proc_hooks), ARRAY_SIZE(ipc_syscalls), ARRAY_SIZE(bpf_hooks));
+	pr_info("entry preflight passed: %zu functions, %zu syscalls, %zu callbacks; no patches written\n",
+		ARRAY_SIZE(hooks) + ARRAY_SIZE(proc_hooks), ARRAY_SIZE(ipc_syscalls), ARRAY_SIZE(callback_hooks));
 	return 0;
 }
 

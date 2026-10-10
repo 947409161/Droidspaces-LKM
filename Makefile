@@ -24,7 +24,8 @@ ccflags-y += -include $(src)/$(PORT_DIR)/names.h
 ifeq ($(USERNS),1)
 droidspaces_ns-y += src/userns/user_namespace.o src/userns/credentials.o src/userns/utsname.o \
 	src/userns/live-credentials.o src/userns/live-ucounts.o src/userns/live-proc.o src/userns/live-syscalls.o src/userns/live-mount.o src/userns/live-fs-context.o src/userns/live-super.o \
-	src/userns/live-identity.o src/userns/live-groups.o src/userns/live-stat.o
+	src/userns/live-identity.o src/userns/live-groups.o src/userns/live-stat.o src/userns/live-capabilities.o \
+	src/userns/live-cgroup.o src/userns/live-time.o src/userns/live-sysfs.o src/userns/live-proc-status.o src/userns/live-nsfs.o src/userns/nsfs-original.o src/userns/live-vfs.o src/userns/live-exec.o src/userns/live-mm.o src/userns/mm-original.o
 ccflags-y += -DCONFIG_USER_NS=1 -DDS_USERNS_LIVE=1
 ccflags-y += -include $(src)/src/userns/live-names.h
 LINUXINCLUDE := -I$(src)/src/userns/compat $(LINUXINCLUDE)

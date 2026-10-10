@@ -16,3 +16,5 @@
 #define vfs_dup_fs_context ds_userns_vfs_dup_fs_context
 #define sget_fc ds_userns_sget_fc
 #define sget ds_userns_sget
+
+#define free_time_ns ds_userns_free_time_ns
