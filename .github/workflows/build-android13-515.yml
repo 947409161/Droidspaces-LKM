@@ -71,6 +71,8 @@ jobs:
             out/gki/android13-5.15-net515/build.json
             out/gki/android13-5.15-net515/prepared.json
             out/gki/android13-5.15-ipset515/*.ko
+            out/gki/android13-5.15-ipset515/*.btf
+            out/gki/android13-5.15-ipset515/*.imports.txt
             out/gki/android13-5.15-ipset515/ipset515.audit.json
             out/gki/android13-5.15-ipset515/prepared.json
             out/gki/android13-5.15-ipset515/build.json
