@@ -4,10 +4,13 @@ Source directory: /opt/ddk/src/android13-5.15
 Original source hashes: upstream/SOURCES.json (before local adaptations)
 
 Target: Meizu 21 Note, 5.15.119-android13-8-g6ff5097ee32a-ab1764665171 (qcom,kalama).
-That kernel has CONFIG_MACVLAN=n and CONFIG_IP6_NF_NAT=n. CONFIG_IP6_NF_TARGET_MASQUERADE=y
-builds xt_MASQUERADE for both address families and CONFIG_NF_NAT=y provides
-nf_nat_masquerade_ipv6, so only the IPv6 "nat" x_tables template is missing for
-IPv6 NAT. CONFIG_NF_TABLES is not set, so no nftables unit is added here.
+That kernel has CONFIG_MACVLAN=n and CONFIG_IP6_NF_NAT=n. masquerade for IPv6 is
+already built in: CONFIG_NETFILTER_XT_TARGET_MASQUERADE=y compiles xt_MASQUERADE,
+which registers NFPROTO_IPV6 as well as NFPROTO_IPV4 in 5.15, and CONFIG_NF_NAT=y
+provides nf_nat_masquerade_ipv6. CONFIG_IP6_NF_TARGET_MASQUERADE does not exist as a
+separate 5.15 option (there is no ip6t_MASQUERADE.c). Only the IPv6 "nat" x_tables
+template is therefore missing. CONFIG_NF_TABLES is not set, so no nftables unit is
+added here.
 
 The upstream files retain their original license notices. The local changes are:
 - Replace the per-file module_init/module_exit entries with ds_nf_init_net515_* /

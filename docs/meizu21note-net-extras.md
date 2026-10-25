@@ -14,10 +14,13 @@
 | IPv6 NAT | `CONFIG_IP6_NF_NAT` 未设置 | `net/ipv6/netfilter/ip6table_nat.c` 的 IPv6 `nat` 表模板 |
 
 IPv6 NAT 的其余部分设备已经内置：`CONFIG_NF_NAT=y`、`CONFIG_IP6_NF_IPTABLES=y`、
-`CONFIG_NF_NAT_MASQUERADE=y`。5.15 的 `xt_MASQUERADE`
-（`CONFIG_IP6_NF_TARGET_MASQUERADE=y`）同时注册 `NFPROTO_IPV4` 与 `NFPROTO_IPV6`，
-`nf_nat_masquerade_ipv6` 也在运行内核中存在。所以只补一张 `ip6table_nat` 表即可，
-不需要另写 masquerade 目标，也不需要 nftables。
+`CONFIG_NF_NAT_MASQUERADE=y`。masquerade 目标来自
+`CONFIG_NETFILTER_XT_TARGET_MASQUERADE=y` 编入的 `xt_MASQUERADE`：该目标在 5.15 里
+同时注册 `NFPROTO_IPV4` 与 `NFPROTO_IPV6`（`net/netfilter/xt_MASQUERADE.c`），
+`nf_nat_masquerade_ipv6` 也在运行内核中存在。设备虽未设置
+`CONFIG_IP6_NF_TARGET_MASQUERADE`（5.15 已无独立的 `ip6t_MASQUERADE.c`），但该
+配置项在 5.15 不再需要。所以只补一张 `ip6table_nat` 表即可，不需要另写
+masquerade 目标，也不需要 nftables。
 
 设备未启用 `CONFIG_NF_TABLES`，因此本分支不加入 netfilter 的 nftables 单元；
 该设备上 Docker 的 NAT 路径由 iptables-legacy 承担，与现状一致。
@@ -98,10 +101,12 @@ CI（`.github/workflows/build-android13-515.yml`）会构建并审计两个模�
 cat /sys/module/droidspaces_net515/parameters/macvlan_registered
 cat /sys/module/droidspaces_net515/parameters/ip6table_nat_registered
 
-# Macvlan：创建、查看、删除（把 wlan0 换成实际承载网卡）
-ip link add link wlan0 name mvtest type macvlan mode bridge
+# Macvlan：先用 dummy 网卡验证 link kind 已注册（与具体 Wi-Fi/蜂窝驱动无关）
+ip link add dummytest type dummy
+ip link add link dummytest name mvtest type macvlan mode bridge
 ip -d link show mvtest
 ip link del mvtest
+ip link del dummytest
 
 # IPv6 NAT：表已注册且可编程
 ip6tables-legacy -t nat -L -n
