@@ -1,6 +1,6 @@
 id=droidspaces_lkm_meizu21note
 name=Droidspaces LKM for Meizu 21 Note
-version=v0.2.4-m21n4
-versionCode=205
+version=v0.2.5-m21n5
+versionCode=206
 author=Shikochin
 description=[待加载] Meizu 21 Note / 5.15.119 专用 PID / IPC、MACVLAN、IPv6 NAT、addrtype、ipset 与 devtmpfs 模块。

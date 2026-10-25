@@ -54,6 +54,20 @@ class Devtmpfs515SourceTests(unittest.TestCase):
         self.assertIn('module_param(ready, bool, 0400)', main)
         self.assertIn('module_param(errors, uint, 0400)', main)
 
+    def test_bti_safe_entry_and_resume(self):
+        hooks = (DEV / 'hooks.c').read_text()
+        stub = (DEV / 'original.S').read_text()
+        self.assertNotIn('IS_ENABLED(CONFIG_ARM64_BTI_KERNEL)', hooks)
+        # Entry keeps a call landing pad and jumps to a jump-pad stub.
+        self.assertIn('0xd503245f', hooks)      # bti c
+        self.assertIn('0xd503249f', stub)       # bti j
+        self.assertIn('b ds_device_add', stub)
+        # Resume uses ret (not an indirect branch) after the SCS-protected prologue.
+        self.assertIn('0xd65f03c0', hooks)
+        self.assertIn('shadow_stack_push', hooks)
+        self.assertIn('no shadow call stack push', hooks)
+        self.assertIn('ds_device_add_target', (DEV / 'port.h').read_text())
+
     def test_hooks_replace_device_lifecycle_only(self):
         hooks = (DEV / 'hooks.c').read_text()
         self.assertEqual(1, hooks.count('"device_add"'))

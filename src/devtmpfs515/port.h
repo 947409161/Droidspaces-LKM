@@ -17,6 +17,9 @@ int ds_hooks_prepare(void);
 int ds_hooks_install(void);
 int ds_device_add_original(struct device *dev);
 void ds_device_del_original(struct device *dev);
+/* Assembly entry stubs reached with `br`; they start with a bti j pad. */
+int ds_device_add_target(struct device *dev);
+void ds_device_del_target(struct device *dev);
 
 /*
  * 5.15 exports neither of these entry points, so they are resolved through

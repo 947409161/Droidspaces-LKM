@@ -21,11 +21,28 @@
 - 工作线程用加载进程的凭据创建节点（与 6.12 版本相同的 SELinux 处理），
   使用私有 `fs_struct` 而不是启动期已释放的 `init_mount` / `init_chroot`。
 
+## BTI 与影子调用栈
+
+目标内核启用 `CONFIG_ARM64_BTI_KERNEL=y` 与 `CONFIG_SHADOW_CALL_STACK=y`，而
+模块由 DDK 构建时没有带 BTI 着陆点，因此第一版直接拒绝 BTI 内核（返回
+`EOPNOTSUPP`）。v0.2.5 改为 BTI 安全的替换：
+
+- 被替换的入口第一字保持 `bti c`，随后 `ldr`/`br` 跳到模块内以 `bti j` 开头的桩；
+  `br` 的 BTYPE 是 jump，`bti j` 与之匹配，桩再用直接 `b` 进入 C 包装函数。
+- 跳板执行完复制来的序言后，用 `ret` 跳回 `entry + N*4`。间接分支才受 BTI
+  限制，`ret` 不受；这样做的前提是复制的序言里包含影子调用栈推送
+  （`str x30, [x18], #imm`），函数尾声会从 SCS 取回返回地址，因此我们为瞄准
+  `ret` 而覆盖的 x30 不影响返回。
+- 因此模块要求内核启用 `CONFIG_SHADOW_CALL_STACK`。找不到该指令时会拒绝加载，
+  并把前 8 个字打印到内核日志，而不是冒险替换。
+- 替换后入口不再能被**间接**调用（入口处已不是着陆点）；内核中对
+  `device_add` / `device_del` 的调用都是直接分支，不影响现有路径。
+
 ## 接入点
 
 | 路径 | 行为 |
 | --- | --- |
-| `device_add` / `device_del` 入口 | 校验可搬移的序言后替换为跳转，原始序言保存在模块内的跳板 |
+| `device_add` / `device_del` 入口 | 保留 `bti c`，`ldr`/`br` 到模块内的 `bti j` 桩，再直接 `b` 到包装函数；原始序言复制到跳板 |
 | 已有设备 | 在 `devices_kset` 快照上按 `get_device()` 持有引用后补节点 |
 | fs 类型 | 内部实例由 `vfs_kern_mount()` 创建；对外注册名为 `devtmpfs` 的挂载入口 |
 
@@ -75,3 +92,6 @@ droidspaces check   # devtmpfs 一项应变为可用
 大小不变且源码不引用差异字段。v0.2.4 Release 已发布。
 
 真机加载与功能验证仍未完成；在完成上文检查前，不宣称 devtmpfs 可用。
+
+2026-10-25 首次真机加载（v0.2.4）返回 `EOPNOTSUPP`：设备启用 BTI，而 v0.2.4 对
+BTI 内核直接拒绝加载。v0.2.5 已按上节改为 BTI 安全替换，等待重新构建与真机确认。
