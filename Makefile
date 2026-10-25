@@ -51,6 +51,46 @@ droidspaces_net515-y := src/net515/main.o src/net515/upstream/macvlan.o \
 # if_macvlan.h turns the accessors into BUG() stubs without this; the addrtype
 # unit compiles its IPv6 match only when the kernel-side tables are enabled.
 ccflags-y += -DCONFIG_MACVLAN=1 -DCONFIG_IP6_NF_IPTABLES=1
+else ifeq ($(TARGET),ipset515)
+IP515 := src/ipset515/upstream
+obj-m := droidspaces_ip_set.o \
+	droidspaces_ip_set_bitmap_ip.o \
+	droidspaces_ip_set_bitmap_ipmac.o \
+	droidspaces_ip_set_bitmap_port.o \
+	droidspaces_ip_set_hash_ip.o \
+	droidspaces_ip_set_hash_ipmac.o \
+	droidspaces_ip_set_hash_ipmark.o \
+	droidspaces_ip_set_hash_ipport.o \
+	droidspaces_ip_set_hash_ipportip.o \
+	droidspaces_ip_set_hash_ipportnet.o \
+	droidspaces_ip_set_hash_mac.o \
+	droidspaces_ip_set_hash_net.o \
+	droidspaces_ip_set_hash_netiface.o \
+	droidspaces_ip_set_hash_netnet.o \
+	droidspaces_ip_set_hash_netport.o \
+	droidspaces_ip_set_hash_netportnet.o \
+	droidspaces_ip_set_list_set.o \
+	droidspaces_xt_set.o
+droidspaces_ip_set-y := $(IP515)/ip_set_core.o $(IP515)/ip_set_getport.o $(IP515)/pfxlen.o
+droidspaces_ip_set_bitmap_ip-y := $(IP515)/ip_set_bitmap_ip.o
+droidspaces_ip_set_bitmap_ipmac-y := $(IP515)/ip_set_bitmap_ipmac.o
+droidspaces_ip_set_bitmap_port-y := $(IP515)/ip_set_bitmap_port.o
+droidspaces_ip_set_hash_ip-y := $(IP515)/ip_set_hash_ip.o
+droidspaces_ip_set_hash_ipmac-y := $(IP515)/ip_set_hash_ipmac.o
+droidspaces_ip_set_hash_ipmark-y := $(IP515)/ip_set_hash_ipmark.o
+droidspaces_ip_set_hash_ipport-y := $(IP515)/ip_set_hash_ipport.o
+droidspaces_ip_set_hash_ipportip-y := $(IP515)/ip_set_hash_ipportip.o
+droidspaces_ip_set_hash_ipportnet-y := $(IP515)/ip_set_hash_ipportnet.o
+droidspaces_ip_set_hash_mac-y := $(IP515)/ip_set_hash_mac.o
+droidspaces_ip_set_hash_net-y := $(IP515)/ip_set_hash_net.o
+droidspaces_ip_set_hash_netiface-y := $(IP515)/ip_set_hash_netiface.o
+droidspaces_ip_set_hash_netnet-y := $(IP515)/ip_set_hash_netnet.o
+droidspaces_ip_set_hash_netport-y := $(IP515)/ip_set_hash_netport.o
+droidspaces_ip_set_hash_netportnet-y := $(IP515)/ip_set_hash_netportnet.o
+droidspaces_ip_set_list_set-y := $(IP515)/ip_set_list_set.o
+droidspaces_xt_set-y := $(IP515)/xt_set.o
+# Matches the device: IPv6 tables are built in, bridge netfilter is not.
+ccflags-y += -DCONFIG_IP6_NF_IPTABLES=1
 else ifeq ($(TARGET),userns)
 obj-m := droidspaces_userns_test.o
 droidspaces_userns_test-y := src/userns/main.o src/userns/user_namespace.o src/userns/credentials.o src/userns/utsname.o

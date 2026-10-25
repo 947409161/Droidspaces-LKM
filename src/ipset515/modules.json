@@ -1,0 +1,137 @@
+{
+  "tag": "android13-5.15.202_r00",
+  "ddk": "sha256:9e68cd9fcab748584755d31ba88ef134efc938dbde17f258c2652315f6cd81cd",
+  "core": "droidspaces_ip_set",
+  "load_order": [
+    "droidspaces_ip_set",
+    "droidspaces_ip_set_bitmap_ip",
+    "droidspaces_ip_set_bitmap_ipmac",
+    "droidspaces_ip_set_bitmap_port",
+    "droidspaces_ip_set_hash_ip",
+    "droidspaces_ip_set_hash_ipmac",
+    "droidspaces_ip_set_hash_ipmark",
+    "droidspaces_ip_set_hash_ipport",
+    "droidspaces_ip_set_hash_ipportip",
+    "droidspaces_ip_set_hash_ipportnet",
+    "droidspaces_ip_set_hash_mac",
+    "droidspaces_ip_set_hash_net",
+    "droidspaces_ip_set_hash_netiface",
+    "droidspaces_ip_set_hash_netnet",
+    "droidspaces_ip_set_hash_netport",
+    "droidspaces_ip_set_hash_netportnet",
+    "droidspaces_ip_set_list_set",
+    "droidspaces_xt_set"
+  ],
+  "modules": [
+    {
+      "name": "droidspaces_ip_set",
+      "objects": [
+        "ip_set_core.c",
+        "ip_set_getport.c",
+        "pfxlen.c"
+      ]
+    },
+    {
+      "name": "droidspaces_ip_set_bitmap_ip",
+      "objects": [
+        "ip_set_bitmap_ip.c"
+      ]
+    },
+    {
+      "name": "droidspaces_ip_set_bitmap_ipmac",
+      "objects": [
+        "ip_set_bitmap_ipmac.c"
+      ]
+    },
+    {
+      "name": "droidspaces_ip_set_bitmap_port",
+      "objects": [
+        "ip_set_bitmap_port.c"
+      ]
+    },
+    {
+      "name": "droidspaces_ip_set_hash_ip",
+      "objects": [
+        "ip_set_hash_ip.c"
+      ]
+    },
+    {
+      "name": "droidspaces_ip_set_hash_ipmac",
+      "objects": [
+        "ip_set_hash_ipmac.c"
+      ]
+    },
+    {
+      "name": "droidspaces_ip_set_hash_ipmark",
+      "objects": [
+        "ip_set_hash_ipmark.c"
+      ]
+    },
+    {
+      "name": "droidspaces_ip_set_hash_ipport",
+      "objects": [
+        "ip_set_hash_ipport.c"
+      ]
+    },
+    {
+      "name": "droidspaces_ip_set_hash_ipportip",
+      "objects": [
+        "ip_set_hash_ipportip.c"
+      ]
+    },
+    {
+      "name": "droidspaces_ip_set_hash_ipportnet",
+      "objects": [
+        "ip_set_hash_ipportnet.c"
+      ]
+    },
+    {
+      "name": "droidspaces_ip_set_hash_mac",
+      "objects": [
+        "ip_set_hash_mac.c"
+      ]
+    },
+    {
+      "name": "droidspaces_ip_set_hash_net",
+      "objects": [
+        "ip_set_hash_net.c"
+      ]
+    },
+    {
+      "name": "droidspaces_ip_set_hash_netiface",
+      "objects": [
+        "ip_set_hash_netiface.c"
+      ]
+    },
+    {
+      "name": "droidspaces_ip_set_hash_netnet",
+      "objects": [
+        "ip_set_hash_netnet.c"
+      ]
+    },
+    {
+      "name": "droidspaces_ip_set_hash_netport",
+      "objects": [
+        "ip_set_hash_netport.c"
+      ]
+    },
+    {
+      "name": "droidspaces_ip_set_hash_netportnet",
+      "objects": [
+        "ip_set_hash_netportnet.c"
+      ]
+    },
+    {
+      "name": "droidspaces_ip_set_list_set",
+      "objects": [
+        "ip_set_list_set.c"
+      ]
+    },
+    {
+      "name": "droidspaces_xt_set",
+      "objects": [
+        "xt_set.c"
+      ]
+    }
+  ]
+}

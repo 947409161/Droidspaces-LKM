@@ -1,0 +1,28 @@
+{
+  "ddk": "sha256:9e68cd9fcab748584755d31ba88ef134efc938dbde17f258c2652315f6cd81cd",
+  "tag": "android13-5.15.202_r00",
+  "files": {
+    "ip_set_bitmap_gen.h": "7f7e992db71352dbee68a01d91498615d8fd9626e9eb226c02de3ea756eeb5b8",
+    "ip_set_bitmap_ip.c": "13f9cfca1aeb1c55f366d1147faef89c5b02d97cb7d6e87dcccb01a95ac7e2b3",
+    "ip_set_bitmap_ipmac.c": "dad6ba89fc42b7c4e15c5f8576fbdf9c60625f0e6d736d892f4a9f04a66b25d8",
+    "ip_set_bitmap_port.c": "bc128df3329624cd8a38bce1e60cee6a88177f68ff2ed02b0ed3b52e953a314c",
+    "ip_set_core.c": "286de2e5ea76da0d28d83f7845562e6a1c2bea330f1c40af890eb85c0a30cf1e",
+    "ip_set_getport.c": "7934f8499891edbcefc7a40012a4a169ebc7ea3fc524fe966401d42e74a4311a",
+    "ip_set_hash_gen.h": "10e29c6242af9f6b1ac371a09300b6f018aa78090e5e57b33921c672acf9302e",
+    "ip_set_hash_ip.c": "d563a45e6dbe8925e9f137344793d499cea2337158a411ee226610d557c61308",
+    "ip_set_hash_ipmac.c": "06360f36e686891bcc0a892434de6a2aeee5a9b52dd6df28b826e3ecc79bf7cd",
+    "ip_set_hash_ipmark.c": "58ace6fe1ded30ba1cdc90daa95d833876f9e0a48ce1a62f1021d8b0a88f9fa1",
+    "ip_set_hash_ipport.c": "753dd2a85ffd5bfc21413dd2bcdd2ad61532b99ce034c4f540f9e7cae291aa56",
+    "ip_set_hash_ipportip.c": "02def90faad03dcd25b96814d04abf25417aa0fba1edc21c426459c87aac3899",
+    "ip_set_hash_ipportnet.c": "6ff54b17fe9e7eb1e88b2ee8a68713e6e5c727ed3c2c248428c34fd5e26b0ded",
+    "ip_set_hash_mac.c": "603ee1ddd7218c628de60684b0b0faa7e7eb891aeef4be0f3d492f6414507a80",
+    "ip_set_hash_net.c": "5d7deec753a1e7fa0a5ef18694d2673552c59eb999049beb4f4a0c51ebf2844e",
+    "ip_set_hash_netiface.c": "6a83a27cc109ce7a72c1b18c9de0ddfe426095d81eeeee7721b32dcba6dedb39",
+    "ip_set_hash_netnet.c": "5926a31a7b725353df12e93f45fe186f6b9a176f199e71b13bb16114d3e7ae4f",
+    "ip_set_hash_netport.c": "a61e5aeab32b20bd90f8c9a0a7c9e2a596102751d440740797094583f4818557",
+    "ip_set_hash_netportnet.c": "fe815acad7aaeb1cdb3dcf392bfdc0d3cb508fa68eabeb2d54b27b6570b4e858",
+    "ip_set_list_set.c": "65ecaeed35bd275596c5a9f1346a79118f31b539be9c955fe7b427d3cb257307",
+    "pfxlen.c": "7c7f1c0eafd92dd972ed0a8ea94e8dd31324b4ba0c73ea2572f1aae8e1892eb6",
+    "xt_set.c": "2845f65052c450f0f7d4065744bfb04db3d2eb738bafde096fc17517c8682cb6"
+  }
+}

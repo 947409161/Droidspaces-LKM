@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise the Meizu 21 Note boot loader without loading anything into the kernel."""
 import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
@@ -12,6 +13,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 RELEASE = '5.15.119-android13-8-g6ff5097ee32a-ab1764665171'
 BTF_SHA = 'ceb62a44dbeb782434c5956c71c03b635129017399cedbf2a1e6cc072998081c'
+IPSET_MODULES = json.loads((ROOT / 'src/ipset515/modules.json').read_text())['load_order']
 
 
 class MeizuLoaderTests(unittest.TestCase):
@@ -23,7 +25,8 @@ class MeizuLoaderTests(unittest.TestCase):
         shutil.copytree(ROOT / 'kernelsu-meizu21note', self.module)
         kernel = self.module / 'kernel'
         kernel.mkdir()
-        self.payloads = ['droidspaces_ns.ko', 'droidspaces_net515.ko']
+        self.payloads = ['droidspaces_ns.ko', 'droidspaces_net515.ko'] + [
+            name + '.ko' for name in IPSET_MODULES]
         for name in self.payloads:
             (kernel / name).write_bytes(f'fake {name}'.encode())
         self.write_sums()
@@ -56,6 +59,14 @@ case "$ko" in
             printf 'Y\\n' > "$FAKE_NET/sys/parameters/xt_addrtype_registered"
         }
         ;;
+    */droidspaces_ip_set*.ko|*/droidspaces_xt_set.ko)
+        name=$(basename "$ko" .ko)
+        case "$FAKE_MODE:$name" in
+            ipset_error:droidspaces_ip_set_hash_net) exit 18 ;;
+            silent_ipset:*) exit 0 ;;
+        esac
+        mkdir -p "$FAKE_ROOT/modules/$name"
+        ;;
 esac
 exit 0
 ''')
@@ -83,6 +94,7 @@ DS_KERNEL_BTF=$FAKE_ROOT/vmlinux.btf
 DS_MODULE_SYS=$FAKE_NS/sys
 DS_NET515_SYS=$FAKE_NET/sys
 DS_PROC_NS=$FAKE_ROOT/procns
+DS_MODULE_ROOT=$FAKE_ROOT/modules
 uname() {
     case "$1" in
         -m) printf 'aarch64\\n';;
@@ -110,15 +122,19 @@ ds_load
         self.assertIn('[已加载]', self.status)
         self.assertIn('MACVLAN', self.status)
         calls = self.insmod_calls()
-        self.assertEqual(len(calls), 2)
+        self.assertEqual(len(calls), 2 + len(IPSET_MODULES))
         self.assertIn('droidspaces_ns.ko gki=1 activate=1', calls[0])
         self.assertIn('droidspaces_net515.ko', calls[1])
+        loaded = [c.split('/kernel/')[-1].split('.ko')[0] for c in calls[2:]]
+        self.assertEqual(loaded, IPSET_MODULES)
+        self.assertEqual(loaded[0], 'droidspaces_ip_set')
+        self.assertEqual(loaded[-1], 'droidspaces_xt_set')
         self.assertEqual(self.status, (self.root / 'description').read_text())
 
     def test_repeat_is_idempotent(self):
         self.assertEqual(self.run_loader().returncode, 0)
         self.assertEqual(self.run_loader().returncode, 0)
-        self.assertEqual(len(self.insmod_calls()), 2)
+        self.assertEqual(len(self.insmod_calls()), 2 + len(IPSET_MODULES))
         self.assertIn('[已加载]', self.status)
 
     def test_net515_failure_is_partial(self):
@@ -146,6 +162,18 @@ ds_load
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('SHA-256', self.status)
         self.assertEqual(self.insmod_calls(), [])
+
+    def test_ipset_ready_needs_every_module(self):
+        result = self.run_loader(mode='silent_ipset')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('[部分加载]', self.status)
+        self.assertIn('ipset 模块加载后未就绪', self.status)
+
+    def test_ipset_module_error_is_partial(self):
+        result = self.run_loader(mode='ipset_error')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('[部分加载]', self.status)
+        self.assertIn('droidspaces_ip_set_hash_net', self.status)
 
     def test_wrong_kernel_rejected(self):
         result = self.run_loader(release='5.15.100-android13-0-g123')

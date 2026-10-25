@@ -1,4 +1,4 @@
-# Meizu 21 Note 5.15 — MACVLAN 与 IPv6 NAT 扩展
+# Meizu 21 Note 5.15 — 网络扩展（MACVLAN / IPv6 NAT / addrtype / ipset）
 
 `droidspaces_ns.ko` 只补 PID / IPC namespace，因此 Droidspaces 检查在该设备上
 仍报告两项可选能力缺失：Macvlan 与 IPv6 NAT。本扩展用第二个独立模块
@@ -14,6 +14,7 @@
 | Macvlan | `CONFIG_MACVLAN` 未设置 | `drivers/net/macvlan.c` 的 rtnl link kind 与 netdevice notifier |
 | IPv6 NAT | `CONFIG_IP6_NF_NAT` 未设置 | `net/ipv6/netfilter/ip6table_nat.c` 的 IPv6 `nat` 表模板 |
 | xt_addrtype | `CONFIG_NETFILTER_XT_MATCH_ADDRTYPE` 未设置 | `net/netfilter/xt_addrtype.c` 的 addrtype 匹配 |
+| ipset | `CONFIG_IP_SET` 未设置 | ipset 核心、16 种 set 类型与 `xt_set` 匹配，共 18 个模块 |
 
 IPv6 NAT 的其余部分设备已经内置：`CONFIG_NF_NAT=y`、`CONFIG_IP6_NF_IPTABLES=y`、
 `CONFIG_NF_NAT_MASQUERADE=y`。masquerade 目标来自
@@ -66,6 +67,50 @@ IPv6 `nat` 表与原生模块一样注册为空模板。
 `dev_*` / `netdev_*` / `eth_*` 接口全部存在，`net/` 源码中调用的外部符号没有
 在设备上缺项。GKI 的导出约定保证同一 KMI（android13-5.15）内符号 CRC 一致。
 
+
+## ipset
+
+`src/ipset515/` 用的是另一种策略：**上游文件零改动**。ipset 的每个模块本来就是
+独立编译、按需加载的主线模块，所以这里不合并成一个 `.ko`，也不替换入口点；
+`modules.json` 记录模块组成与加载顺序，Makefile 由它生成，测试逐行核对两者。
+
+- 模块名统一加 `droidspaces_` 前缀（`droidspaces_ip_set`、`droidspaces_ip_set_hash_net`、
+  `droidspaces_xt_set` 等），避免与将来原生编入的 ipset 冲突。
+- 编译期定义 `CONFIG_IP6_NF_IPTABLES=1`，使 `ip_set_getport()` 能解析 IPv6 端口；
+  不定义 `CONFIG_BRIDGE_NETFILTER`，因为设备也没启用，`hash:netiface` 因而编译成
+  非 bridge 变体，与宿主行为一致。
+- 内核在 `insmod` 时解析模块间符号，所以加载顺序固定为：核心 → 16 种 set 类型 →
+  `xt_set`。`droidspaces_ip_set` 导出 26 个核心符号，类型模块依赖其中一部分；
+  审计脚本会用 `__ksymtab` 精确核对“模块间导入”和“内核导入”，不存在靠猜测的地方。
+- 不附带用户态 `ipset` 程序：容器内安装发行版的 ipset 包即可（Debian 为 `ipset`），
+  它通过 nfnetlink 直接与内核模块通信，不需要宿主端二进制。
+
+已验证的静态条件：设备 `CONFIG_IP_SET=n`，但 ipset 核心所需的 nfnetlink、
+`nf_register_sockopt`、netlink 与内存分配符号全部存在；第三方 IPSET_LKM v2.5 的
+android13-5.15 包用同一批 5.15.202 源码构建，其 `ip_set.ko` 与本设备符号完全对得上。
+
+真机验证（root shell）：
+
+```sh
+# 全部 18 个模块都已加载
+for m in droidspaces_ip_set droidspaces_xt_set; do
+    test -d "/sys/module/$m" && echo "$m OK"
+done
+
+# 基础 set 操作
+ipset create dstest hash:ip
+ipset add dstest 192.0.2.10
+ipset test dstest 192.0.2.10
+ipset list dstest
+ipset destroy dstest
+
+# 与 iptables 配合
+ipset create nets hash:net
+ipset add nets 198.51.100.0/24
+iptables-legacy -A INPUT -m set --match-set nets src -j ACCEPT
+iptables-legacy -L INPUT -n
+```
+
 ## 构建与验证
 
 模块与 `droidspaces_ns.ko` 使用同一个固定 DDK 镜像，单独输出目录：
@@ -73,6 +118,8 @@ IPv6 `nat` 表与原生模块一样注册为空模板。
 ```sh
 python3 scripts/build-gki.py --module net515 5.15 -j2
 python3 scripts/prepare-net515.py 5.15
+python3 scripts/build-gki.py --module ipset515 5.15 -j2
+python3 scripts/prepare-ipset515.py 5.15
 ```
 
 `--module` 必须写在目标之前：`make` 参数用 `REMAINDER` 收集，写在目标之后会被当成
@@ -86,13 +133,15 @@ make 参数。
 
 打包时 `scripts/package-meizu21note.py` 再用真机 `vmlinux` BTF 与 `kallsyms`
 复核：结构差异只允许 `net_device.l3mdev_ops`（厂商字段，与 `droidspaces_ns.ko`
-的白名单相同），导入符号必须全部存在于设备。两个模块的 `.ko`、两份审计报告
-一起进入 ZIP，`kernel/SHA256SUMS` 覆盖全部载荷。
+的白名单相同），导入符号必须全部存在于设备；ipset 的类型模块允许从本模块组的
+核心导出解析符号，其余导入同样必须在设备上存在。全部 `.ko`、三份审计报告
+一起进入 ZIP，`kernel/SHA256SUMS` 覆盖每一个载荷。
 
 本地单元测试（不需要内核或设备）：
 
 ```sh
 python3 tests/module/test_net515_sources.py
+python3 tests/module/test_ipset515_sources.py
 python3 tests/module/test_meizu21note_loader.py
 ```
 
@@ -143,7 +192,9 @@ modversions aarch64`）。逐项比对后，其未定义符号与本文两个单
 ## 边界
 
 - 两个 `CONFIG_NF_TABLES` 相关能力不在本分支范围：设备内核没有 nftables，
-  也没有 `br_netfilter`。
+  也没有 `br_netfilter`，因此 ipset 的 `hash:netiface` 使用非 bridge 变体。
+- ipset 模块组共 18 个 `.ko`，ZIP 体积因此增加约 5 MB；它们没有内核内守卫
+  （上游文件零改动），由加载器的设备/BTF 门禁统一把关。
 - IPv6 NAT 提供的是标准 ip6tables 表语义；不改变宿主防火墙策略，不预置规则。
 - 结构与符号检查基于固定 DDK 与目标设备；厂商若改动 `net_device` 之外的结构，
   打包会被拒绝，需要重新审计。

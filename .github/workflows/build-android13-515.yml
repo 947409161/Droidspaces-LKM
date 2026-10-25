@@ -17,7 +17,9 @@ on:
       - vendor/kallrecon/**
       - kernelsu-meizu21note/**
       - src/net515/**
+      - src/ipset515/**
       - scripts/prepare-net515.py
+      - scripts/prepare-ipset515.py
       - scripts/package-meizu21note.py
 
 permissions:
@@ -40,9 +42,14 @@ jobs:
         run: sudo "$(command -v python3)" scripts/build-gki.py --module net515 5.15 -j2
       - name: Audit MACVLAN and IPv6 NAT module
         run: sudo "$(command -v python3)" scripts/prepare-net515.py 5.15
+      - name: Build ipset modules
+        run: sudo "$(command -v python3)" scripts/build-gki.py --module ipset515 5.15 -j2
+      - name: Audit ipset modules
+        run: sudo "$(command -v python3)" scripts/prepare-ipset515.py 5.15
       - name: Make build artifacts readable to the uploader
         run: |
-          sudo chmod -R a+rX out/gki/android13-5.15 out/gki/android13-5.15-net515
+          sudo chmod -R a+rX out/gki/android13-5.15 out/gki/android13-5.15-net515 \
+            out/gki/android13-5.15-ipset515
       - uses: actions/upload-artifact@v4
         with:
           name: android13-5.15-abi-inputs
@@ -63,3 +70,7 @@ jobs:
             out/gki/android13-5.15-net515/net515.audit.json
             out/gki/android13-5.15-net515/build.json
             out/gki/android13-5.15-net515/prepared.json
+            out/gki/android13-5.15-ipset515/*.ko
+            out/gki/android13-5.15-ipset515/ipset515.audit.json
+            out/gki/android13-5.15-ipset515/prepared.json
+            out/gki/android13-5.15-ipset515/build.json

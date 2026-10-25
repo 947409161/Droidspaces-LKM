@@ -13,6 +13,8 @@ MODULES = {
                   'extra_sources': ()},
     'net515': {'target': 'net515', 'ko': 'droidspaces_net515.ko', 'suffix': '-net515',
                'extra_sources': ('src/net515',)},
+    'ipset515': {'target': 'ipset515', 'ko': 'droidspaces_ip_set.ko', 'suffix': '-ipset515',
+                 'extra_sources': ('src/ipset515',)},
 }
 
 
@@ -54,6 +56,11 @@ if __name__ == '__main__':
     subprocess.run(cmd, check=True)
     if before != source_hashes(target, module['extra_sources']):
         raise RuntimeError('build sources changed during compilation')
+    required = [module['ko']]
+    for name in required:
+        if not (out / name).is_file():
+            raise RuntimeError(f'missing build output: {out / name}')
+    built = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+             for p in sorted(out.glob('*.ko'))}
     record.write_text(json.dumps(dict(target=target, module=args.module, sources=before,
-        module_sha256=hashlib.sha256((out/module['ko']).read_bytes()).hexdigest()),
-        indent=2)+'\n')
+        module_sha256=built[module['ko']], modules=built), indent=2)+'\n')

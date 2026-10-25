@@ -94,6 +94,8 @@ def audit_device():
 
 
 NET515_OUT = ROOT / 'out/gki/android13-5.15-net515'
+IPSET_OUT = ROOT / 'out/gki/android13-5.15-ipset515'
+IPSET_MANIFEST = json.loads((ROOT/'src/ipset515/modules.json').read_text())
 
 
 def audit_net515():
@@ -134,9 +136,53 @@ def audit_net515():
                 expected_layout_differences=layouts['differences'])
 
 
+def audit_ipset():
+    device_btf = ROOT/'vmlinux'
+    symbols_path = ROOT/'kallsyms'
+    for path in (device_btf, symbols_path):
+        require(path.is_file(), f'missing required local device input: {path.name}')
+    require(sha(device_btf.read_bytes()) == BTF_SHA, 'device BTF fingerprint differs')
+    audit = json.loads((IPSET_OUT/'ipset515.audit.json').read_text())
+    build = json.loads((IPSET_OUT/'build.json').read_text())
+    require(build.get('module') == 'ipset515', 'unexpected ipset GitHub build module')
+    require({m['name'] for m in IPSET_MANIFEST['modules']} == set(audit['modules']),
+            'ipset audit does not cover the manifest')
+    provided = set(audit['core_exports'])
+    symbols = {line.split()[2] for line in symbols_path.read_text().splitlines()
+               if len(line.split()) >= 3}
+    modules = {}
+    for module in IPSET_MANIFEST['modules']:
+        name = module['name']
+        ko = IPSET_OUT/(name + '.ko')
+        require(ko.is_file(), f'missing ipset module {name}')
+        digest = sha(ko.read_bytes())
+        require(audit['modules'][name]['sha256'] == digest,
+                f'{name} differs from the audited build')
+        require(build['modules'].get(name) == digest,
+                f'{name} differs from the recorded GitHub build')
+        layouts = compare_btf.compare(IPSET_OUT/(name + '.btf'), device_btf)
+        require(set(layouts['differences']) <= {'net_device'},
+                f'{name}: unexpected target structure differences: {set(layouts["differences"])}')
+        for struct, diff in layouts['differences'].items():
+            require(diff['size'][0] == diff['size'][1], f'{name}: {struct} size changed')
+            require(set(diff['changed']) == {'l3mdev_ops'},
+                    f'{name}: unexpected {struct} field layout')
+            require(not diff['device_only'], f'{name}: unexpected {struct} target-only fields')
+        imports = {line.split()[-1] for line in
+                   (IPSET_OUT/(name + '.imports.txt')).read_text().splitlines() if line.strip()}
+        unresolved = (imports - provided) - symbols
+        require(not unresolved, f'{name}: unresolved device symbols: {sorted(unresolved)}')
+        modules[name] = dict(module_sha256=digest, imports=len(imports),
+                             internal_imports=len(imports & provided),
+                             matching_aggregates=layouts['matching_aggregates'])
+    return dict(device_release=RELEASE, device_btf_sha256=BTF_SHA,
+                core_exports=sorted(provided), modules=modules)
+
+
 def package(output):
     report = audit_device()
     net515_report = audit_net515()
+    ipset_report = audit_ipset()
     ko = (OUT/'droidspaces_ns.ko').read_bytes()
     net515_ko = (NET515_OUT/'droidspaces_net515.ko').read_bytes()
     require(ko[:6] == b'\x7fELF\x02\x01', 'module is not ELF64 little-endian')
@@ -151,6 +197,9 @@ def package(output):
     files['kernel/droidspaces_net515.ko'] = net515_ko
     files['kernel/target.json'] = (json.dumps(report, indent=2, ensure_ascii=False)+'\n').encode()
     files['kernel/net515-target.json'] = (json.dumps(net515_report, indent=2, ensure_ascii=False)+'\n').encode()
+    for module in IPSET_MANIFEST['modules']:
+        files['kernel/' + module['name'] + '.ko'] = (IPSET_OUT/(module['name'] + '.ko')).read_bytes()
+    files['kernel/ipset-target.json'] = (json.dumps(ipset_report, indent=2, ensure_ascii=False)+'\n').encode()
     files['kernel/SHA256SUMS'] = ''.join(
         f'{sha(data)}  {name.removeprefix("kernel/")}\n'
         for name, data in sorted(files.items()) if name.startswith('kernel/')).encode()
@@ -161,7 +210,8 @@ def package(output):
         'The installer checks the full release string and the device BTF SHA-256 before loading.\n'
         'ABI comparison evidence is in kernel/target.json and kernel/net515-target.json.\n'
         'droidspaces_ns.ko supplies PID / IPC namespaces; droidspaces_net515.ko supplies\n'
-        'the MACVLAN link kind and the IPv6 xtables nat table.\n'
+        'the MACVLAN link kind, the IPv6 xtables nat table and xt_addrtype;\n'
+        'droidspaces_ip_set*.ko and droidspaces_xt_set.ko supply ipset.\n'
     ).encode()
     files['SHA256SUMS'] = ''.join(f'{sha(data)}  {name}\n' for name, data in sorted(files.items())
                                  if name.startswith('kernel/')).encode()

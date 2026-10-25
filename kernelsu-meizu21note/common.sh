@@ -6,6 +6,8 @@ DS_MODULE_SYS=/sys/module/droidspaces_ns
 DS_NET515_SYS=/sys/module/droidspaces_net515
 DS_KERNEL_BTF=${DS_KERNEL_BTF:-/sys/kernel/btf/vmlinux}
 DS_PROC_NS=${DS_PROC_NS:-/proc/self/ns}
+DS_MODULE_ROOT=${DS_MODULE_ROOT:-/sys/module}
+DS_IPSET_MODULES='droidspaces_ip_set droidspaces_ip_set_bitmap_ip droidspaces_ip_set_bitmap_ipmac droidspaces_ip_set_bitmap_port droidspaces_ip_set_hash_ip droidspaces_ip_set_hash_ipmac droidspaces_ip_set_hash_ipmark droidspaces_ip_set_hash_ipport droidspaces_ip_set_hash_ipportip droidspaces_ip_set_hash_ipportnet droidspaces_ip_set_hash_mac droidspaces_ip_set_hash_net droidspaces_ip_set_hash_netiface droidspaces_ip_set_hash_netnet droidspaces_ip_set_hash_netport droidspaces_ip_set_hash_netportnet droidspaces_ip_set_list_set droidspaces_xt_set'
 DS_KSUD=/data/adb/ksud
 [ -x "$DS_KSUD" ] || DS_KSUD=/data/adb/ksu/bin/ksud
 export KSU_MODULE=droidspaces_lkm_meizu21note
@@ -40,8 +42,11 @@ ds_target_supported() {
 }
 
 ds_payload_valid() {
-    [ -s "$MODDIR/kernel/droidspaces_ns.ko" ] &&
-    [ -s "$MODDIR/kernel/droidspaces_net515.ko" ] &&
+    [ -s "$MODDIR/kernel/droidspaces_ns.ko" ] || return 1
+    [ -s "$MODDIR/kernel/droidspaces_net515.ko" ] || return 1
+    for ds_m in $DS_IPSET_MODULES; do
+        [ -s "$MODDIR/kernel/$ds_m.ko" ] || return 1
+    done
     (cd "$MODDIR/kernel" && sha256sum -c SHA256SUMS)
 }
 
@@ -86,6 +91,41 @@ ds_net515_load() {
     return 0
 }
 
+ds_ipset_active() {
+    for ds_m in $DS_IPSET_MODULES; do
+        [ -d "$DS_MODULE_ROOT/$ds_m" ] || return 1
+    done
+    return 0
+}
+
+ds_ipset_load() {
+    DS_IPSET_STATE=''
+    if ds_ipset_active; then
+        printf 'ipset: already active\n'
+        return 0
+    fi
+    if [ ! -x "$DS_KSUD" ]; then
+        DS_IPSET_STATE='找不到可执行的 ksud。'
+        return 1
+    fi
+    for ds_m in $DS_IPSET_MODULES; do
+        [ -d "$DS_MODULE_ROOT/$ds_m" ] && continue
+        printf 'Loading %s.ko\n' "$ds_m"
+        "$DS_KSUD" insmod "$MODDIR/kernel/$ds_m.ko"
+        ds_result=$?
+        if [ "$ds_result" -ne 0 ]; then
+            DS_IPSET_STATE="ipset 模块 $ds_m 加载返回 $ds_result。"
+            return 1
+        fi
+    done
+    if ! ds_ipset_active; then
+        DS_IPSET_STATE='ipset 模块加载后未就绪，详见 load.log。'
+        return 1
+    fi
+    printf 'ipset: activated\n'
+    return 0
+}
+
 ds_load() {
     ds_ns_new=''
     if ! ds_target_supported; then
@@ -120,18 +160,25 @@ ds_load() {
         fi
         ds_ns_new=1
     fi
-    if ds_net515_load; then
+    if ds_net515_load; then ds_net_ok=1; else ds_net_ok=0; fi
+    if ds_ipset_load; then ds_ipset_ok=1; else ds_ipset_ok=0; fi
+    if [ "$ds_net_ok" = 1 ] && [ "$ds_ipset_ok" = 1 ]; then
         if [ -n "$ds_ns_new" ]; then
-            ds_status '[已加载] PID / IPC namespace 及 MACVLAN / IPv6 NAT / addrtype 已激活。'
+            ds_status '[已加载] PID / IPC namespace 与网络扩展（MACVLAN / IPv6 NAT / addrtype / ipset）已激活。'
         else
-            ds_status '[已加载] PID / IPC namespace 及 MACVLAN / IPv6 NAT / addrtype 已激活；更换模块需重启。'
+            ds_status '[已加载] PID / IPC namespace 与网络扩展（MACVLAN / IPv6 NAT / addrtype / ipset）已激活；更换模块需重启。'
         fi
         return 0
     fi
+    ds_reason=''
+    [ "$ds_net_ok" = 1 ] || ds_reason="$DS_EXTRA_STATE"
+    if [ "$ds_ipset_ok" = 0 ]; then
+        ds_reason="${ds_reason:+$ds_reason }$DS_IPSET_STATE"
+    fi
     if [ -n "$ds_ns_new" ]; then
-        ds_status "[部分加载] PID / IPC namespace 已激活；$DS_EXTRA_STATE"
+        ds_status "[部分加载] PID / IPC namespace 已激活；$ds_reason"
     else
-        ds_status "[部分加载] PID / IPC namespace 可用；$DS_EXTRA_STATE"
+        ds_status "[部分加载] PID / IPC namespace 可用；$ds_reason"
     fi
     return 1
 }
