@@ -53,17 +53,18 @@ ds_active() {
 
 ds_net515_active() {
     [ "$(cat "$DS_NET515_SYS/parameters/macvlan_registered" 2>/dev/null)" = Y ] &&
-    [ "$(cat "$DS_NET515_SYS/parameters/ip6table_nat_registered" 2>/dev/null)" = Y ]
+    [ "$(cat "$DS_NET515_SYS/parameters/ip6table_nat_registered" 2>/dev/null)" = Y ] &&
+    [ "$(cat "$DS_NET515_SYS/parameters/xt_addrtype_registered" 2>/dev/null)" = Y ]
 }
 
 ds_net515_load() {
     DS_EXTRA_STATE=''
     if ds_net515_active; then
-        printf 'MACVLAN / IPv6 NAT: already active\n'
+        printf 'MACVLAN / IPv6 NAT / addrtype: already active\n'
         return 0
     fi
     if [ -d "$DS_NET515_SYS" ]; then
-        DS_EXTRA_STATE='MACVLAN / IPv6 NAT 已有未激活模块，请重启后重试。'
+        DS_EXTRA_STATE='MACVLAN / IPv6 NAT / addrtype 已有未激活模块，请重启后重试。'
         return 1
     fi
     if [ ! -x "$DS_KSUD" ]; then
@@ -74,14 +75,14 @@ ds_net515_load() {
     "$DS_KSUD" insmod "$MODDIR/kernel/droidspaces_net515.ko"
     ds_result=$?
     if [ "$ds_result" -ne 0 ]; then
-        DS_EXTRA_STATE="MACVLAN / IPv6 NAT 加载返回 $ds_result。"
+        DS_EXTRA_STATE="MACVLAN / IPv6 NAT / addrtype 加载返回 $ds_result。"
         return 1
     fi
     if ! ds_net515_active; then
-        DS_EXTRA_STATE='MACVLAN / IPv6 NAT 加载后未注册，详见 load.log。'
+        DS_EXTRA_STATE='MACVLAN / IPv6 NAT / addrtype 加载后未注册，详见 load.log。'
         return 1
     fi
-    printf 'MACVLAN / IPv6 NAT: activated\n'
+    printf 'MACVLAN / IPv6 NAT / addrtype: activated\n'
     return 0
 }
 
@@ -121,9 +122,9 @@ ds_load() {
     fi
     if ds_net515_load; then
         if [ -n "$ds_ns_new" ]; then
-            ds_status '[已加载] PID / IPC namespace 及 MACVLAN / IPv6 NAT 已激活。'
+            ds_status '[已加载] PID / IPC namespace 及 MACVLAN / IPv6 NAT / addrtype 已激活。'
         else
-            ds_status '[已加载] PID / IPC namespace 及 MACVLAN / IPv6 NAT 已激活；更换模块需重启。'
+            ds_status '[已加载] PID / IPC namespace 及 MACVLAN / IPv6 NAT / addrtype 已激活；更换模块需重启。'
         fi
         return 0
     fi

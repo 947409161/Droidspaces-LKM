@@ -47,9 +47,10 @@ LINUXINCLUDE := -I$(src)/src/netfilter/compat $(LINUXINCLUDE)
 else ifeq ($(TARGET),net515)
 obj-m := droidspaces_net515.o
 droidspaces_net515-y := src/net515/main.o src/net515/upstream/macvlan.o \
-	src/net515/upstream/ip6table_nat.o
-# if_macvlan.h turns the accessors into BUG() stubs without this.
-ccflags-y += -DCONFIG_MACVLAN=1
+	src/net515/upstream/ip6table_nat.o src/net515/upstream/xt_addrtype.o
+# if_macvlan.h turns the accessors into BUG() stubs without this; the addrtype
+# unit compiles its IPv6 match only when the kernel-side tables are enabled.
+ccflags-y += -DCONFIG_MACVLAN=1 -DCONFIG_IP6_NF_IPTABLES=1
 else ifeq ($(TARGET),userns)
 obj-m := droidspaces_userns_test.o
 droidspaces_userns_test-y := src/userns/main.o src/userns/user_namespace.o src/userns/credentials.o src/userns/utsname.o

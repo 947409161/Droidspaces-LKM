@@ -4,26 +4,39 @@ Source directory: /opt/ddk/src/android13-5.15
 Original source hashes: upstream/SOURCES.json (before local adaptations)
 
 Target: Meizu 21 Note, 5.15.119-android13-8-g6ff5097ee32a-ab1764665171 (qcom,kalama).
-That kernel has CONFIG_MACVLAN=n and CONFIG_IP6_NF_NAT=n. masquerade for IPv6 is
-already built in: CONFIG_NETFILTER_XT_TARGET_MASQUERADE=y compiles xt_MASQUERADE,
-which registers NFPROTO_IPV6 as well as NFPROTO_IPV4 in 5.15, and CONFIG_NF_NAT=y
-provides nf_nat_masquerade_ipv6. CONFIG_IP6_NF_TARGET_MASQUERADE does not exist as a
-separate 5.15 option (there is no ip6t_MASQUERADE.c). Only the IPv6 "nat" x_tables
-template is therefore missing. CONFIG_NF_TABLES is not set, so no nftables unit is
-added here.
+That kernel has CONFIG_MACVLAN=n, CONFIG_IP6_NF_NAT=n and
+CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=n. All three units are ordinary mainline
+modules that the vendor build simply omits.
+
+IPv6 NAT only needs the x_tables template: CONFIG_NETFILTER_XT_TARGET_MASQUERADE=y
+compiles xt_MASQUERADE, which registers NFPROTO_IPV6 as well as NFPROTO_IPV4 in
+5.15, and CONFIG_NF_NAT=y provides nf_nat_masquerade_ipv6. There is no separate
+ip6t_MASQUERADE.c in this release. CONFIG_NF_TABLES is not set, so no nftables
+unit is added here.
+
+xt_addrtype is what Docker's iptables rules and -m addrtype setups need. The
+device has CONFIG_IP6_NF_IPTABLES=y and the IPv6 helpers resolve, so the unit is
+compiled with -DCONFIG_IP6_NF_IPTABLES=1 to keep the IPv6 match and its family
+registration; the upstream file guards all of that behind that option.
 
 The upstream files retain their original license notices. The local changes are:
 - Replace the per-file module_init/module_exit entries with ds_nf_init_net515_* /
-  ds_nf_exit_net515_* wrappers so one module can own both units and roll back in
-  reverse order. Module metadata moved to main.c; the macvlan rtnl link alias is kept.
+  ds_nf_exit_net515_* wrappers so one module can own all units and roll back in
+  reverse order. Module metadata moved to main.c; the rtnl link and xtables aliases
+  are kept.
 - Build with -DCONFIG_MACVLAN=1 so include/linux/if_macvlan.h provides the inlined
-  accessors instead of the CONFIG_MACVLAN-less BUG() stubs.
+  accessors instead of the CONFIG_MACVLAN-less BUG() stubs, and with
+  -DCONFIG_IP6_NF_IPTABLES=1 so xt_addrtype keeps its IPv6 match.
 - Restrict loading to the recorded device release or a 5.15.x linux,dummy-virt VM.
 
-Nothing else is changed. Both units are the ordinary mainline modules: macvlan
-registers its rtnl link kind and netdevice notifier, and ip6table_nat registers an
-empty IPv6 "nat" table template. Module initialization installs no rules and creates
-no links.
+Nothing else is changed. Each unit is the ordinary mainline module: macvlan
+registers its rtnl link kind and netdevice notifier, ip6table_nat registers an
+empty IPv6 "nat" table template, xt_addrtype registers its matches. Module
+initialization installs no rules and creates no links.
+
+Cross-check: the third-party IPSET_LKM release v2.5 ships an ip6table_nat.ko and
+xt_addrtype.ko built for 5.15.202 whose imported symbols are exactly the ones used
+here, and every one of them is present on the target device.
 
 Regression entry point: tests/vm/run-net515.sh (requires a VM image with iproute2,
 iptables-legacy and ip6tables; see docs/meizu21note-net-extras.md).

@@ -106,7 +106,8 @@ def audit_net515():
     ko = (NET515_OUT/'droidspaces_net515.ko').read_bytes()
     require(ko[:6] == b'\x7fELF\x02\x01', 'net515 module is not ELF64 little-endian')
     require(b'parmtype=macvlan_registered:bool' in ko and
-            b'parmtype=ip6table_nat_registered:bool' in ko,
+            b'parmtype=ip6table_nat_registered:bool' in ko and
+            b'parmtype=xt_addrtype_registered:bool' in ko,
             'net515 module is missing the registration parameters')
     build = json.loads((NET515_OUT/'build.json').read_text())
     require(build['module_sha256'] == sha(ko), 'net515 module differs from recorded GitHub build')

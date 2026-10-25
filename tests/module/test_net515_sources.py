@@ -11,7 +11,8 @@ ROOT = Path(__file__).resolve().parents[2]
 NET515 = ROOT / 'src/net515'
 TARGETS = json.loads((ROOT / 'build/gki-targets.json').read_text())
 UNITS = {'macvlan': 'drivers/net/macvlan.c',
-         'ip6table_nat': 'net/ipv6/netfilter/ip6table_nat.c'}
+         'ip6table_nat': 'net/ipv6/netfilter/ip6table_nat.c',
+         'xt_addrtype': 'net/netfilter/xt_addrtype.c'}
 
 
 class Net515SourceTests(unittest.TestCase):
@@ -29,7 +30,7 @@ class Net515SourceTests(unittest.TestCase):
                 text = (NET515 / 'upstream' / Path(upstream).name).read_text()
                 self.assertEqual(1, text.count(f'ds_nf_init_net515_{unit}'))
                 self.assertEqual(1, text.count(f'ds_nf_exit_net515_{unit}'))
-                self.assertNotRegex(text, r'^module_init\(', )
+                self.assertNotRegex(text, r'^module_init\(')
                 self.assertNotRegex(text, r'^module_exit\(')
                 self.assertIn('SPDX-License-Identifier: GPL-2.0', text)
 

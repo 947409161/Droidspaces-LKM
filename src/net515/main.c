@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * MACVLAN and IPv6 NAT support for the recorded Android 13 / 5.15 kernel.
+ * MACVLAN, IPv6 NAT and xt_addrtype support for the recorded Android 13 / 5.15
+ * kernel.
  *
- * The target vendor kernel builds neither drivers/net/macvlan.c nor
- * net/ipv6/netfilter/ip6table_nat.c. Both are ordinary mainline modules there;
- * this unit supplies them without touching the native firewall or bridge code.
+ * The target vendor kernel builds none of drivers/net/macvlan.c,
+ * net/ipv6/netfilter/ip6table_nat.c or net/netfilter/xt_addrtype.c. All three
+ * are ordinary mainline modules there; this unit supplies them without touching
+ * the native firewall or bridge code.
  * Registration is rolled back in reverse order, and the state of each unit is
  * reported through read-only module parameters for the boot loader.
  *
@@ -26,14 +28,19 @@ extern int ds_nf_init_net515_macvlan(void);
 extern void ds_nf_exit_net515_macvlan(void);
 extern int ds_nf_init_net515_ip6table_nat(void);
 extern void ds_nf_exit_net515_ip6table_nat(void);
+extern int ds_nf_init_net515_xt_addrtype(void);
+extern void ds_nf_exit_net515_xt_addrtype(void);
 
 static bool macvlan_registered;
 static bool ip6table_nat_registered;
+static bool xt_addrtype_registered;
 
 module_param(macvlan_registered, bool, 0444);
 MODULE_PARM_DESC(macvlan_registered, "MACVLAN link kind registered");
 module_param(ip6table_nat_registered, bool, 0444);
 MODULE_PARM_DESC(ip6table_nat_registered, "IPv6 xtables nat table registered");
+module_param(xt_addrtype_registered, bool, 0444);
+MODULE_PARM_DESC(xt_addrtype_registered, "xt_addrtype match registered");
 
 struct ds_net515_unit {
 	const char *name;
@@ -54,6 +61,12 @@ static struct ds_net515_unit units[] = {
 		.init = ds_nf_init_net515_ip6table_nat,
 		.exit = ds_nf_exit_net515_ip6table_nat,
 		.registered = &ip6table_nat_registered,
+	},
+	{
+		.name = "xt_addrtype",
+		.init = ds_nf_init_net515_xt_addrtype,
+		.exit = ds_nf_exit_net515_xt_addrtype,
+		.registered = &xt_addrtype_registered,
 	},
 };
 
@@ -93,7 +106,7 @@ static int __init ds_net515_init(void)
 		pr_info("%s registered\n", units[i].name);
 	}
 
-	pr_info("MACVLAN and IPv6 NAT registered; no rules installed\n");
+	pr_info("MACVLAN, IPv6 NAT and xt_addrtype registered; no rules installed\n");
 	return 0;
 }
 

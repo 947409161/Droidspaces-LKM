@@ -7,5 +7,5 @@
 set_perm_recursive "$MODPATH" 0 0 0755 0644
 set_perm "$MODPATH/service.sh" 0 0 0755
 ui_print '- ZIP 安装完成；设备内核版本与 BTF 将在开机加载前核对。'
-ui_print '- 开机加载 PID / IPC namespace 与 MACVLAN / IPv6 NAT 两个模块。'
+ui_print '- 开机加载 PID / IPC namespace 与 MACVLAN / IPv6 NAT / addrtype 两个模块。'
 ui_print '- 加载状态和错误原因见模块目录 status.txt / load.log。'

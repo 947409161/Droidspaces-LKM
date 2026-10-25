@@ -53,6 +53,7 @@ case "$ko" in
             mkdir -p "$FAKE_NET/sys/parameters"
             printf 'Y\\n' > "$FAKE_NET/sys/parameters/macvlan_registered"
             printf 'Y\\n' > "$FAKE_NET/sys/parameters/ip6table_nat_registered"
+            printf 'Y\\n' > "$FAKE_NET/sys/parameters/xt_addrtype_registered"
         }
         ;;
 esac

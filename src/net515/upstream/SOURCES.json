@@ -3,6 +3,7 @@
   "tag": "android13-5.15.202_r00",
   "files": {
     "drivers/net/macvlan.c": "e08f0afd4f38f64fcfae10128662c19aecfe874c741f405760391d09d4b9a6e9",
-    "net/ipv6/netfilter/ip6table_nat.c": "147b567e828b33f2b10975bbd442b71a3907a24706120f8dc534ffc97506d05b"
+    "net/ipv6/netfilter/ip6table_nat.c": "147b567e828b33f2b10975bbd442b71a3907a24706120f8dc534ffc97506d05b",
+    "net/netfilter/xt_addrtype.c": "4cdc0a33f448d4a67e349302ad7245ff1a73f2a0fce298295b6217c2d0ec5c11"
   }
 }

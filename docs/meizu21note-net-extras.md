@@ -2,7 +2,8 @@
 
 `droidspaces_ns.ko` 只补 PID / IPC namespace，因此 Droidspaces 检查在该设备上
 仍报告两项可选能力缺失：Macvlan 与 IPv6 NAT。本扩展用第二个独立模块
-`droidspaces_net515.ko` 提供这两项，源码位于 `src/net515/`。
+`droidspaces_net515.ko` 提供这两项，并补上 Docker 规则会用到的 `xt_addrtype`，
+源码位于 `src/net515/`。
 
 ## 为什么这两项可以用 LKM 补
 
@@ -12,6 +13,7 @@
 | --- | --- | --- |
 | Macvlan | `CONFIG_MACVLAN` 未设置 | `drivers/net/macvlan.c` 的 rtnl link kind 与 netdevice notifier |
 | IPv6 NAT | `CONFIG_IP6_NF_NAT` 未设置 | `net/ipv6/netfilter/ip6table_nat.c` 的 IPv6 `nat` 表模板 |
+| xt_addrtype | `CONFIG_NETFILTER_XT_MATCH_ADDRTYPE` 未设置 | `net/netfilter/xt_addrtype.c` 的 addrtype 匹配 |
 
 IPv6 NAT 的其余部分设备已经内置：`CONFIG_NF_NAT=y`、`CONFIG_IP6_NF_IPTABLES=y`、
 `CONFIG_NF_NAT_MASQUERADE=y`。masquerade 目标来自
@@ -30,13 +32,15 @@ masquerade 目标，也不需要 nftables。
 模块沿用 `src/netfilter/`（PLZ110 6.12）的单元化做法：一个 `.ko` 内按顺序注册
 两个单元，失败时逆序回滚；注册结果通过只读模块参数暴露给开机脚本。
 
-- 单元入口：`ds_nf_init_net515_macvlan`、`ds_nf_init_net515_ip6table_nat`，
-  由 `src/net515/main.c` 调用；上游文件只把 `module_init` / `module_exit` 换成
-  这对包装，其余内容保持原样（含许可证声明）。
+- 单元入口：`ds_nf_init_net515_macvlan`、`ds_nf_init_net515_ip6table_nat`、
+  `ds_nf_init_net515_xt_addrtype`，由 `src/net515/main.c` 按序调用；上游文件只把
+  `module_init` / `module_exit` 换成包装，其余内容保持原样（含许可证声明）。
 - 编译期定义 `CONFIG_MACVLAN=1`，让 `include/linux/if_macvlan.h` 提供内联访问器，
-  而不是未启用时的 `BUG()` 占位实现。
-- 只读参数：`macvlan_registered`、`ip6table_nat_registered`，加载器据此判断
-  两个单元是否都真正注册成功。
+  而不是未启用时的 `BUG()` 占位实现；同时定义 `CONFIG_IP6_NF_IPTABLES=1`，
+  让 `xt_addrtype` 保留 IPv6 匹配与 `NFPROTO_IPV6` 注册（上游用该选项守卫整段）。
+  设备本身启用 `CONFIG_IP6_NF_IPTABLES=y`，所以运行时语义一致。
+- 只读参数：`macvlan_registered`、`ip6table_nat_registered`、
+  `xt_addrtype_registered`，加载器据此判断三个单元是否都真正注册成功。
 - 目标限制：`qcom,kalama` 且完整版本
   `5.15.119-android13-8-g6ff5097ee32a-ab1764665171`，或 `linux,dummy-virt`
   上的 5.15.x QEMU。其他内核直接返回 `EOPNOTSUPP`。
@@ -54,6 +58,9 @@ IPv6 `nat` 表与原生模块一样注册为空模板。
   （net/netfilter/x_tables.c）
 - `nf_nat_ipv6_register_fn`、`nf_nat_ipv6_unregister_fn`
   （net/netfilter/nf_nat_proto.c）
+- `xt_register_matches`、`xt_unregister_matches`（net/netfilter/x_tables.c），
+  以及 addrtype 使用的 `inet_dev_addr_type`、`__ipv6_addr_type`、
+  `ipv6_chk_addr`、`__nf_ip6_route`、`dst_release`
 
 2026-10-25 在目标设备 `/proc/kallsyms` 中核对：上述符号以及 macvlan 使用的一批
 `dev_*` / `netdev_*` / `eth_*` 接口全部存在，`net/` 源码中调用的外部符号没有
@@ -108,6 +115,10 @@ ip -d link show mvtest
 ip link del mvtest
 ip link del dummytest
 
+# xt_addrtype：匹配已注册
+iptables-legacy -t mangle -A PREROUTING -m addrtype --dst-type LOCAL -j ACCEPT
+iptables-legacy -t mangle -L -n
+
 # IPv6 NAT：表已注册且可编程
 ip6tables-legacy -t nat -L -n
 ip6tables-legacy -t nat -A POSTROUTING -o wlan0 -j MASQUERADE
@@ -119,7 +130,15 @@ droidspaces check
 
 开机加载结果见 `/data/adb/modules/droidspaces_lkm_meizu21note/status.txt`：
 两个模块都注册时显示 `[已加载]`，只有 namespace 成功时显示 `[部分加载]`，
-并给出 MACVLAN / IPv6 NAT 的具体原因。
+并给出 MACVLAN / IPv6 NAT / addrtype 的具体原因。
+
+## 与第三方实现的交叉验证
+
+[IPSET_LKM](https://github.com/TanakaLun/IPSET_LKM) v2.5 提供 android13-5.15 的
+`ip6table_nat.ko` 与 `xt_addrtype.ko`（vermagic `5.15.202 SMP preempt mod_unload
+modversions aarch64`）。逐项比对后，其未定义符号与本文两个单元使用的符号集合
+一致，且全部能在目标设备 `/proc/kallsyms` 中解析。这独立验证了本扩展的依赖选择；
+本仓库仍按项目惯例从固定的 5.15.202 源码构建并保留自己的审计链。
 
 ## 边界
 
