@@ -97,6 +97,7 @@ def audit_device():
 # recorded device. Every entry keeps the aggregate size unchanged; the changed
 # fields are vendor backports that our modules never dereference.
 VENDOR_LAYOUT_DELTAS = {
+    'perf_event': {'group_generation'},
     'net_device': {'l3mdev_ops'},
     'netns_ipv4': {'sysctl_tcp_l3mdev_accept', 'sysctl_udp_l3mdev_accept',
                    'sysctl_raw_l3mdev_accept'},
