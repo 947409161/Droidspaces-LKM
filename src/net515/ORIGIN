@@ -1,0 +1,26 @@
+Source: Android common kernel, tag android13-5.15.202_r00 (pinned DDK android13-5.15)
+DDK: ghcr.io/ylarod/ddk-min@sha256:9e68cd9fcab748584755d31ba88ef134efc938dbde17f258c2652315f6cd81cd
+Source directory: /opt/ddk/src/android13-5.15
+Original source hashes: upstream/SOURCES.json (before local adaptations)
+
+Target: Meizu 21 Note, 5.15.119-android13-8-g6ff5097ee32a-ab1764665171 (qcom,kalama).
+That kernel has CONFIG_MACVLAN=n and CONFIG_IP6_NF_NAT=n. CONFIG_IP6_NF_TARGET_MASQUERADE=y
+builds xt_MASQUERADE for both address families and CONFIG_NF_NAT=y provides
+nf_nat_masquerade_ipv6, so only the IPv6 "nat" x_tables template is missing for
+IPv6 NAT. CONFIG_NF_TABLES is not set, so no nftables unit is added here.
+
+The upstream files retain their original license notices. The local changes are:
+- Replace the per-file module_init/module_exit entries with ds_nf_init_net515_* /
+  ds_nf_exit_net515_* wrappers so one module can own both units and roll back in
+  reverse order. Module metadata moved to main.c; the macvlan rtnl link alias is kept.
+- Build with -DCONFIG_MACVLAN=1 so include/linux/if_macvlan.h provides the inlined
+  accessors instead of the CONFIG_MACVLAN-less BUG() stubs.
+- Restrict loading to the recorded device release or a 5.15.x linux,dummy-virt VM.
+
+Nothing else is changed. Both units are the ordinary mainline modules: macvlan
+registers its rtnl link kind and netdevice notifier, and ip6table_nat registers an
+empty IPv6 "nat" table template. Module initialization installs no rules and creates
+no links.
+
+Regression entry point: tests/vm/run-net515.sh (requires a VM image with iproute2,
+iptables-legacy and ip6tables; see docs/meizu21note-net-extras.md).

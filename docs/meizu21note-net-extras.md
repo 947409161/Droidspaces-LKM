@@ -1,0 +1,128 @@
+# Meizu 21 Note 5.15 — MACVLAN 与 IPv6 NAT 扩展
+
+`droidspaces_ns.ko` 只补 PID / IPC namespace，因此 Droidspaces 检查在该设备上
+仍报告两项可选能力缺失：Macvlan 与 IPv6 NAT。本扩展用第二个独立模块
+`droidspaces_net515.ko` 提供这两项，源码位于 `src/net515/`。
+
+## 为什么这两项可以用 LKM 补
+
+两者在主线都是普通模块，设备内核只是没有编入：
+
+| 能力 | 设备内核状态 | 缺失的只是 |
+| --- | --- | --- |
+| Macvlan | `CONFIG_MACVLAN` 未设置 | `drivers/net/macvlan.c` 的 rtnl link kind 与 netdevice notifier |
+| IPv6 NAT | `CONFIG_IP6_NF_NAT` 未设置 | `net/ipv6/netfilter/ip6table_nat.c` 的 IPv6 `nat` 表模板 |
+
+IPv6 NAT 的其余部分设备已经内置：`CONFIG_NF_NAT=y`、`CONFIG_IP6_NF_IPTABLES=y`、
+`CONFIG_NF_NAT_MASQUERADE=y`。5.15 的 `xt_MASQUERADE`
+（`CONFIG_IP6_NF_TARGET_MASQUERADE=y`）同时注册 `NFPROTO_IPV4` 与 `NFPROTO_IPV6`，
+`nf_nat_masquerade_ipv6` 也在运行内核中存在。所以只补一张 `ip6table_nat` 表即可，
+不需要另写 masquerade 目标，也不需要 nftables。
+
+设备未启用 `CONFIG_NF_TABLES`，因此本分支不加入 netfilter 的 nftables 单元；
+该设备上 Docker 的 NAT 路径由 iptables-legacy 承担，与现状一致。
+
+## 与内核的契约
+
+模块沿用 `src/netfilter/`（PLZ110 6.12）的单元化做法：一个 `.ko` 内按顺序注册
+两个单元，失败时逆序回滚；注册结果通过只读模块参数暴露给开机脚本。
+
+- 单元入口：`ds_nf_init_net515_macvlan`、`ds_nf_init_net515_ip6table_nat`，
+  由 `src/net515/main.c` 调用；上游文件只把 `module_init` / `module_exit` 换成
+  这对包装，其余内容保持原样（含许可证声明）。
+- 编译期定义 `CONFIG_MACVLAN=1`，让 `include/linux/if_macvlan.h` 提供内联访问器，
+  而不是未启用时的 `BUG()` 占位实现。
+- 只读参数：`macvlan_registered`、`ip6table_nat_registered`，加载器据此判断
+  两个单元是否都真正注册成功。
+- 目标限制：`qcom,kalama` 且完整版本
+  `5.15.119-android13-8-g6ff5097ee32a-ab1764665171`，或 `linux,dummy-virt`
+  上的 5.15.x QEMU。其他内核直接返回 `EOPNOTSUPP`。
+
+初始化不创建网卡、不安装任何防火墙规则；MACVLAN 设备只在用户态请求时出现，
+IPv6 `nat` 表与原生模块一样注册为空模板。
+
+## 依赖符号
+
+在 5.15.202 源码中确认已导出（`EXPORT_SYMBOL` / `EXPORT_SYMBOL_GPL`）：
+
+- `ip6t_register_table`、`ip6t_unregister_table_exit`、`ip6t_do_table`、
+  `ip6t_alloc_initial_table`（net/ipv6/netfilter/ip6_tables.c）
+- `xt_find_table`、`xt_register_template`、`xt_unregister_template`
+  （net/netfilter/x_tables.c）
+- `nf_nat_ipv6_register_fn`、`nf_nat_ipv6_unregister_fn`
+  （net/netfilter/nf_nat_proto.c）
+
+2026-10-25 在目标设备 `/proc/kallsyms` 中核对：上述符号以及 macvlan 使用的一批
+`dev_*` / `netdev_*` / `eth_*` 接口全部存在，`net/` 源码中调用的外部符号没有
+在设备上缺项。GKI 的导出约定保证同一 KMI（android13-5.15）内符号 CRC 一致。
+
+## 构建与验证
+
+模块与 `droidspaces_ns.ko` 使用同一个固定 DDK 镜像，单独输出目录：
+
+```sh
+python3 scripts/build-gki.py --module net515 5.15 -j2
+python3 scripts/prepare-net515.py 5.15
+```
+
+`--module` 必须写在目标之前：`make` 参数用 `REMAINDER` 收集，写在目标之后会被当成
+make 参数。
+
+`prepare-net515.py` 在 DDK 容器内导出 `vmlinux` BTF、`.config`、
+`llvm-nm -u` 导入表和内核符号表，然后要求：
+
+- 模块 BTF 与 DDK 内核 BTF 的结构布局完全一致（`compare-btf.py` 无差异）；
+- 模块的全部未定义符号都能在 DDK 内核符号表中解析。
+
+打包时 `scripts/package-meizu21note.py` 再用真机 `vmlinux` BTF 与 `kallsyms`
+复核：结构差异只允许 `net_device.l3mdev_ops`（厂商字段，与 `droidspaces_ns.ko`
+的白名单相同），导入符号必须全部存在于设备。两个模块的 `.ko`、两份审计报告
+一起进入 ZIP，`kernel/SHA256SUMS` 覆盖全部载荷。
+
+本地单元测试（不需要内核或设备）：
+
+```sh
+python3 tests/module/test_net515_sources.py
+python3 tests/module/test_meizu21note_loader.py
+```
+
+CI（`.github/workflows/build-android13-515.yml`）会构建并审计两个模块，
+产物作为 `android13-5.15-abi-inputs` 上传。
+
+## 仍需在真机上完成
+
+以下验证需要 root shell（KernelSU），本轮未执行：
+
+```sh
+# 两个单元都已注册
+cat /sys/module/droidspaces_net515/parameters/macvlan_registered
+cat /sys/module/droidspaces_net515/parameters/ip6table_nat_registered
+
+# Macvlan：创建、查看、删除（把 wlan0 换成实际承载网卡）
+ip link add link wlan0 name mvtest type macvlan mode bridge
+ip -d link show mvtest
+ip link del mvtest
+
+# IPv6 NAT：表已注册且可编程
+ip6tables-legacy -t nat -L -n
+ip6tables-legacy -t nat -A POSTROUTING -o wlan0 -j MASQUERADE
+ip6tables-legacy -t nat -L -n
+
+# Droidspaces 检查中的两项应变为可用
+droidspaces check
+```
+
+开机加载结果见 `/data/adb/modules/droidspaces_lkm_meizu21note/status.txt`：
+两个模块都注册时显示 `[已加载]`，只有 namespace 成功时显示 `[部分加载]`，
+并给出 MACVLAN / IPv6 NAT 的具体原因。
+
+## 边界
+
+- 两个 `CONFIG_NF_TABLES` 相关能力不在本分支范围：设备内核没有 nftables，
+  也没有 `br_netfilter`。
+- IPv6 NAT 提供的是标准 ip6tables 表语义；不改变宿主防火墙策略，不预置规则。
+- 结构与符号检查基于固定 DDK 与目标设备；厂商若改动 `net_device` 之外的结构，
+  打包会被拒绝，需要重新审计。
+- CPU 带宽（`CONFIG_CFS_BANDWIDTH`）与进程数限制（`CONFIG_CGROUP_PIDS`）是内核
+  编译选项，会改变 `cfs_rq` / `task_group` 与 cgroup 子系统布局，LKM 无法补，
+  保持为 Droidspaces 检查中的已知缺失项。

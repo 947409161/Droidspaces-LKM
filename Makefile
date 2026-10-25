@@ -44,6 +44,12 @@ include $(src)/src/netfilter/objects.mk
 # NF_TABLES itself changes struct net; keep the native definition intact.
 ccflags-y += -DCONFIG_NF_TABLES_IPV4=1 -DCONFIG_NF_TABLES_IPV6=1 -DCONFIG_NF_TABLES_INET=1
 LINUXINCLUDE := -I$(src)/src/netfilter/compat $(LINUXINCLUDE)
+else ifeq ($(TARGET),net515)
+obj-m := droidspaces_net515.o
+droidspaces_net515-y := src/net515/main.o src/net515/upstream/macvlan.o \
+	src/net515/upstream/ip6table_nat.o
+# if_macvlan.h turns the accessors into BUG() stubs without this.
+ccflags-y += -DCONFIG_MACVLAN=1
 else ifeq ($(TARGET),userns)
 obj-m := droidspaces_userns_test.o
 droidspaces_userns_test-y := src/userns/main.o src/userns/user_namespace.o src/userns/credentials.o src/userns/utsname.o

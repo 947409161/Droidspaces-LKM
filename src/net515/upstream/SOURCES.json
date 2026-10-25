@@ -1,0 +1,8 @@
+{
+  "ddk": "sha256:9e68cd9fcab748584755d31ba88ef134efc938dbde17f258c2652315f6cd81cd",
+  "tag": "android13-5.15.202_r00",
+  "files": {
+    "drivers/net/macvlan.c": "e08f0afd4f38f64fcfae10128662c19aecfe874c741f405760391d09d4b9a6e9",
+    "net/ipv6/netfilter/ip6table_nat.c": "147b567e828b33f2b10975bbd442b71a3907a24706120f8dc534ffc97506d05b"
+  }
+}

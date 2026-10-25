@@ -93,9 +93,51 @@ def audit_device():
                 fuse_fields_accessed=sorted(fuse_used))
 
 
+NET515_OUT = ROOT / 'out/gki/android13-5.15-net515'
+
+
+def audit_net515():
+    device_btf = ROOT/'vmlinux'
+    symbols_path = ROOT/'kallsyms'
+    for path in (device_btf, symbols_path):
+        require(path.is_file(), f'missing required local device input: {path.name}')
+    require(sha(device_btf.read_bytes()) == BTF_SHA, 'device BTF fingerprint differs')
+
+    ko = (NET515_OUT/'droidspaces_net515.ko').read_bytes()
+    require(ko[:6] == b'\x7fELF\x02\x01', 'net515 module is not ELF64 little-endian')
+    require(b'parmtype=macvlan_registered:bool' in ko and
+            b'parmtype=ip6table_nat_registered:bool' in ko,
+            'net515 module is missing the registration parameters')
+    build = json.loads((NET515_OUT/'build.json').read_text())
+    require(build['module_sha256'] == sha(ko), 'net515 module differs from recorded GitHub build')
+    require(build.get('module') == 'net515', 'unexpected net515 GitHub build module')
+    audit = json.loads((NET515_OUT/'net515.audit.json').read_text())
+    require(audit['module_sha256'] == sha(ko), 'net515 audit belongs to another module')
+
+    layouts = compare_btf.compare(NET515_OUT/'module.btf', device_btf)
+    require(set(layouts['differences']) <= {'net_device'},
+            f'unexpected net515 target structure differences: {set(layouts["differences"])}')
+    for name, diff in layouts['differences'].items():
+        require(diff['size'][0] == diff['size'][1], f'{name} size changed')
+        require(set(diff['changed']) == {'l3mdev_ops'}, f'unexpected {name} field layout')
+        require(not diff['device_only'], f'unexpected {name} target-only fields')
+
+    imports = {line.split()[-1] for line in (NET515_OUT/'imports.txt').read_text().splitlines() if line.strip()}
+    symbols = {line.split()[2] for line in symbols_path.read_text().splitlines()
+               if len(line.split()) >= 3}
+    require(imports <= symbols, f'unresolved device symbols: {sorted(imports-symbols)}')
+    return dict(device_release=RELEASE, device_btf_sha256=BTF_SHA,
+                module_sha256=sha(ko), imports=len(imports),
+                resolved_imports=len(imports),
+                matching_aggregates=layouts['matching_aggregates'],
+                expected_layout_differences=layouts['differences'])
+
+
 def package(output):
     report = audit_device()
+    net515_report = audit_net515()
     ko = (OUT/'droidspaces_ns.ko').read_bytes()
+    net515_ko = (NET515_OUT/'droidspaces_net515.ko').read_bytes()
     require(ko[:6] == b'\x7fELF\x02\x01', 'module is not ELF64 little-endian')
     require(b'parmtype=gki:bool' in ko and b'parmtype=activate:bool' in ko,
             'module is missing the gki / activate parameters')
@@ -105,14 +147,20 @@ def package(output):
     files = {p.name: p.read_bytes() for p in
              (ROOT/'kernelsu-meizu21note').iterdir() if p.is_file()}
     files['kernel/droidspaces_ns.ko'] = ko
-    files['kernel/SHA256SUMS'] = f'{sha(ko)}  droidspaces_ns.ko\n'.encode()
+    files['kernel/droidspaces_net515.ko'] = net515_ko
     files['kernel/target.json'] = (json.dumps(report, indent=2, ensure_ascii=False)+'\n').encode()
+    files['kernel/net515-target.json'] = (json.dumps(net515_report, indent=2, ensure_ascii=False)+'\n').encode()
+    files['kernel/SHA256SUMS'] = ''.join(
+        f'{sha(data)}  {name.removeprefix("kernel/")}\n'
+        for name, data in sorted(files.items()) if name.startswith('kernel/')).encode()
     files['LICENSE'] = (ROOT/'LICENSE').read_bytes()
     files['README.md'] = (ROOT/'README.md').read_bytes()
     files['SOURCE.txt'] = (
         'Target: Meizu 21 Note, ' + RELEASE + '\n'
         'The installer checks the full release string and the device BTF SHA-256 before loading.\n'
-        'ABI comparison evidence is in kernel/target.json.\n'
+        'ABI comparison evidence is in kernel/target.json and kernel/net515-target.json.\n'
+        'droidspaces_ns.ko supplies PID / IPC namespaces; droidspaces_net515.ko supplies\n'
+        'the MACVLAN link kind and the IPv6 xtables nat table.\n'
     ).encode()
     files['SHA256SUMS'] = ''.join(f'{sha(data)}  {name}\n' for name, data in sorted(files.items())
                                  if name.startswith('kernel/')).encode()

@@ -16,6 +16,8 @@ on:
       - src/port515/**
       - vendor/kallrecon/**
       - kernelsu-meizu21note/**
+      - src/net515/**
+      - scripts/prepare-net515.py
       - scripts/package-meizu21note.py
 
 permissions:
@@ -34,8 +36,13 @@ jobs:
         run: sudo "$(command -v python3)" scripts/build-gki.py 5.15 -j2 MEIZU21NOTE=1
       - name: Prepare ABI comparison inputs
         run: sudo "$(command -v python3)" scripts/prepare-gki-vm.py 5.15
+      - name: Build MACVLAN and IPv6 NAT module
+        run: sudo "$(command -v python3)" scripts/build-gki.py --module net515 5.15 -j2
+      - name: Audit MACVLAN and IPv6 NAT module
+        run: sudo "$(command -v python3)" scripts/prepare-net515.py 5.15
       - name: Make build artifacts readable to the uploader
-        run: sudo chmod -R a+rX out/gki/android13-5.15
+        run: |
+          sudo chmod -R a+rX out/gki/android13-5.15 out/gki/android13-5.15-net515
       - uses: actions/upload-artifact@v4
         with:
           name: android13-5.15-abi-inputs
@@ -49,3 +56,10 @@ jobs:
             out/gki/android13-5.15/android13-5.15.audit.json
             out/gki/android13-5.15/build.json
             out/gki/android13-5.15/prepared.json
+            out/gki/android13-5.15-net515/droidspaces_net515.ko
+            out/gki/android13-5.15-net515/module.btf
+            out/gki/android13-5.15-net515/kernel.btf
+            out/gki/android13-5.15-net515/imports.txt
+            out/gki/android13-5.15-net515/net515.audit.json
+            out/gki/android13-5.15-net515/build.json
+            out/gki/android13-5.15-net515/prepared.json
