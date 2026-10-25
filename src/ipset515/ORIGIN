@@ -14,9 +14,11 @@ are built under prefixed names (droidspaces_ip_set*, droidspaces_xt_set) so they
 cannot collide with a native ipset build.
 
 Build flags: -DCONFIG_IP6_NF_IPTABLES=1 matches the device, which sets that option,
-and keeps ip_set_getport() able to parse IPv6 transport ports. CONFIG_BRIDGE_NETFILTER
-is deliberately not defined because the device does not set it; ip_set_hash_netiface
-then builds the non-bridge variant, matching host behaviour.
+and keeps ip_set_getport() able to parse IPv6 transport ports. -DCONFIG_IP_SET_MAX=256
+supplies the default from the ipset Kconfig, which the device build omits along with
+CONFIG_IP_SET. CONFIG_BRIDGE_NETFILTER is deliberately not defined because the device
+does not set it; ip_set_hash_netiface then builds the non-bridge variant, matching
+host behaviour.
 
 Loading: the kernel resolves module-to-module imports at insmod time, so the loader
 must load droidspaces_ip_set first, then the set types, then droidspaces_xt_set.

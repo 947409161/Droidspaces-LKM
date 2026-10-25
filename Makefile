@@ -90,7 +90,9 @@ droidspaces_ip_set_hash_netportnet-y := $(IP515)/ip_set_hash_netportnet.o
 droidspaces_ip_set_list_set-y := $(IP515)/ip_set_list_set.o
 droidspaces_xt_set-y := $(IP515)/xt_set.o
 # Matches the device: IPv6 tables are built in, bridge netfilter is not.
-ccflags-y += -DCONFIG_IP6_NF_IPTABLES=1
+# CONFIG_IP_SET_MAX comes from the ipset Kconfig, which the device build omits;
+# 256 is the upstream default.
+ccflags-y += -DCONFIG_IP6_NF_IPTABLES=1 -DCONFIG_IP_SET_MAX=256
 else ifeq ($(TARGET),userns)
 obj-m := droidspaces_userns_test.o
 droidspaces_userns_test-y := src/userns/main.o src/userns/user_namespace.o src/userns/credentials.o src/userns/utsname.o

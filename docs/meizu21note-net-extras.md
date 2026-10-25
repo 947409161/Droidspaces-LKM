@@ -78,7 +78,8 @@ IPv6 `nat` 表与原生模块一样注册为空模板。
   `droidspaces_xt_set` 等），避免与将来原生编入的 ipset 冲突。
 - 编译期定义 `CONFIG_IP6_NF_IPTABLES=1`，使 `ip_set_getport()` 能解析 IPv6 端口；
   不定义 `CONFIG_BRIDGE_NETFILTER`，因为设备也没启用，`hash:netiface` 因而编译成
-  非 bridge 变体，与宿主行为一致。
+  非 bridge 变体，与宿主行为一致。另外补 `CONFIG_IP_SET_MAX=256`：这个值来自 ipset
+  自己的 Kconfig，设备内核连同 `CONFIG_IP_SET` 一起没有，256 是上游默认值。
 - 内核在 `insmod` 时解析模块间符号，所以加载顺序固定为：核心 → 16 种 set 类型 →
   `xt_set`。`droidspaces_ip_set` 导出 set 操作与工具符号（参考实现中为 26 个），
   类型模块依赖其中一部分；
