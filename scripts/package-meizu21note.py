@@ -93,6 +93,42 @@ def audit_device():
                 fuse_fields_accessed=sorted(fuse_used))
 
 
+# Vendor IPv6/KABI deltas observed between the pinned 5.15.202 DDK and the
+# recorded device. Every entry keeps the aggregate size unchanged; the changed
+# fields are vendor backports that our modules never dereference.
+VENDOR_LAYOUT_DELTAS = {
+    'net_device': {'l3mdev_ops'},
+    'netns_ipv4': {'sysctl_tcp_l3mdev_accept', 'sysctl_udp_l3mdev_accept',
+                   'sysctl_raw_l3mdev_accept'},
+    'ipv6_devconf': {'padding4', 'ra_honor_pio_pflag'},
+    'prefix_info': {'flags', 'preferpd', 'reserved', 'routeraddr'},
+}
+
+
+def source_text(directory):
+    return '\n'.join(p.read_text(errors='ignore')
+                     for p in sorted((ROOT/directory).rglob('*'))
+                     if p.is_file() and p.suffix in ('.c', '.h'))
+
+
+def check_vendor_layouts(label, module_btf, device_btf, sources):
+    layouts = compare_btf.compare(module_btf, device_btf)
+    unexpected = set(layouts['differences']) - set(VENDOR_LAYOUT_DELTAS)
+    require(not unexpected,
+            f'{label}: unexpected target structure differences: {sorted(unexpected)}')
+    for name, diff in layouts['differences'].items():
+        require(diff['size'][0] == diff['size'][1], f'{label}: {name} size changed')
+        require(set(diff['changed']) == VENDOR_LAYOUT_DELTAS[name],
+                f'{label}: unexpected {name} field layout')
+        require(not diff['device_only'], f'{label}: unexpected {name} target-only fields')
+        if not re.search(r'\b' + name + r'\b', sources):
+            continue
+        for field in diff['changed']:
+            require(not re.search(r'(->|\.)' + re.escape(field) + r'\b', sources),
+                    f'{label}: source reads vendor-changed field {name}.{field}')
+    return layouts
+
+
 NET515_OUT = ROOT / 'out/gki/android13-5.15-net515'
 IPSET_OUT = ROOT / 'out/gki/android13-5.15-ipset515'
 IPSET_MANIFEST = json.loads((ROOT/'src/ipset515/modules.json').read_text())
@@ -117,13 +153,8 @@ def audit_net515():
     audit = json.loads((NET515_OUT/'net515.audit.json').read_text())
     require(audit['module_sha256'] == sha(ko), 'net515 audit belongs to another module')
 
-    layouts = compare_btf.compare(NET515_OUT/'module.btf', device_btf)
-    require(set(layouts['differences']) <= {'net_device'},
-            f'unexpected net515 target structure differences: {set(layouts["differences"])}')
-    for name, diff in layouts['differences'].items():
-        require(diff['size'][0] == diff['size'][1], f'{name} size changed')
-        require(set(diff['changed']) == {'l3mdev_ops'}, f'unexpected {name} field layout')
-        require(not diff['device_only'], f'unexpected {name} target-only fields')
+    layouts = check_vendor_layouts('net515', NET515_OUT/'module.btf', device_btf,
+                                   source_text('src/net515'))
 
     imports = {line.split()[-1] for line in (NET515_OUT/'imports.txt').read_text().splitlines() if line.strip()}
     symbols = {line.split()[2] for line in symbols_path.read_text().splitlines()
@@ -158,16 +189,10 @@ def audit_ipset():
         digest = sha(ko.read_bytes())
         require(audit['modules'][name]['sha256'] == digest,
                 f'{name} differs from the audited build')
-        require(build['modules'].get(name) == digest,
-                f'{name} differs from the recorded GitHub build')
-        layouts = compare_btf.compare(IPSET_OUT/(name + '.btf'), device_btf)
-        require(set(layouts['differences']) <= {'net_device'},
-                f'{name}: unexpected target structure differences: {set(layouts["differences"])}')
-        for struct, diff in layouts['differences'].items():
-            require(diff['size'][0] == diff['size'][1], f'{name}: {struct} size changed')
-            require(set(diff['changed']) == {'l3mdev_ops'},
-                    f'{name}: unexpected {struct} field layout')
-            require(not diff['device_only'], f'{name}: unexpected {struct} target-only fields')
+        recorded = build['modules'].get(name, build['modules'].get(name + '.ko'))
+        require(recorded == digest, f'{name} differs from the recorded GitHub build')
+        layouts = check_vendor_layouts(name, IPSET_OUT/(name + '.btf'), device_btf,
+                                       source_text('src/ipset515/upstream'))
         imports = {line.split()[-1] for line in
                    (IPSET_OUT/(name + '.imports.txt')).read_text().splitlines() if line.strip()}
         unresolved = (imports - provided) - symbols

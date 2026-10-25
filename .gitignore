@@ -3,3 +3,8 @@
 .DS_Store
 
 __pycache__/
+
+# Device audit inputs (never committed)
+/vmlinux
+/kallsyms
+/kernel.config

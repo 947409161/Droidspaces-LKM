@@ -60,7 +60,7 @@ if __name__ == '__main__':
     for name in required:
         if not (out / name).is_file():
             raise RuntimeError(f'missing build output: {out / name}')
-    built = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+    built = {p.stem: hashlib.sha256(p.read_bytes()).hexdigest()
              for p in sorted(out.glob('*.ko'))}
     record.write_text(json.dumps(dict(target=target, module=args.module, sources=before,
         module_sha256=built[module['ko']], modules=built), indent=2)+'\n')
