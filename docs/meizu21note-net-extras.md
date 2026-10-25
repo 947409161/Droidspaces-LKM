@@ -184,6 +184,27 @@ droidspaces check
 两个模块都注册时显示 `[已加载]`，只有 namespace 成功时显示 `[部分加载]`，
 并给出 MACVLAN / IPv6 NAT / addrtype 的具体原因。
 
+
+## 2026-10-25 构建与设备审计结果
+
+GitHub Actions 工作流（run 40174767461）在固定 DDK 上完成构建并通过审计：
+
+| 载荷 | 结果 |
+| --- | --- |
+| `droidspaces_ns.ko` | 402 个导入全部解析，679 个结构布局与 DDK 一致 |
+| `droidspaces_net515.ko` | 114 个导入全部解析，701 个结构布局一致 |
+| 18 个 ipset `.ko` | 全部构建通过；模块间符号由核心导出精确核对，其余导入全部解析 |
+
+用本设备 BTF（`ceb62a44…081c`）与 `kallsyms` 复核后打包：全部导入符号存在于设备；
+与设备的结构差异只有文档化的厂商 IPv6/KABI 增量（`net_device`、`netns_ipv4`、
+`ipv6_devconf`、`prefix_info`），四者大小不变，且我们的源码从不引用这些差异字段。
+ZIP 共 20 个 `.ko`、6.4 MB，`kernel/SHA256SUMS` 的 23 项全部校验通过。
+
+产物：`out/meizu21note-5.15.119/Droidspaces-LKM-KernelSU-Meizu21Note-5.15.119.zip`，
+SHA256 `cf0eeac3b4aeb8e5235d99c582663749f84c89ef9acd30f0f797958d60b80877`。
+
+尚未完成的是真机加载与功能验证（需要 KernelSU root shell），命令见上。
+
 ## 与第三方实现的交叉验证
 
 [IPSET_LKM](https://github.com/TanakaLun/IPSET_LKM) v2.5 提供 android13-5.15 的
