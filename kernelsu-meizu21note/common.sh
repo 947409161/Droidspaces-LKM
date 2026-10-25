@@ -4,6 +4,7 @@ DS_RELEASE='5.15.119-android13-8-g6ff5097ee32a-ab1764665171'
 DS_BTF_SHA256='ceb62a44dbeb782434c5956c71c03b635129017399cedbf2a1e6cc072998081c'
 DS_MODULE_SYS=/sys/module/droidspaces_ns
 DS_NET515_SYS=/sys/module/droidspaces_net515
+DS_DEVTMPFS_SYS=/sys/module/droidspaces_devtmpfs515
 DS_KERNEL_BTF=${DS_KERNEL_BTF:-/sys/kernel/btf/vmlinux}
 DS_PROC_NS=${DS_PROC_NS:-/proc/self/ns}
 DS_MODULE_ROOT=${DS_MODULE_ROOT:-/sys/module}
@@ -44,6 +45,7 @@ ds_target_supported() {
 ds_payload_valid() {
     [ -s "$MODDIR/kernel/droidspaces_ns.ko" ] || return 1
     [ -s "$MODDIR/kernel/droidspaces_net515.ko" ] || return 1
+    [ -s "$MODDIR/kernel/droidspaces_devtmpfs515.ko" ] || return 1
     for ds_m in $DS_IPSET_MODULES; do
         [ -s "$MODDIR/kernel/$ds_m.ko" ] || return 1
     done
@@ -60,6 +62,40 @@ ds_net515_active() {
     [ "$(cat "$DS_NET515_SYS/parameters/macvlan_registered" 2>/dev/null)" = Y ] &&
     [ "$(cat "$DS_NET515_SYS/parameters/ip6table_nat_registered" 2>/dev/null)" = Y ] &&
     [ "$(cat "$DS_NET515_SYS/parameters/xt_addrtype_registered" 2>/dev/null)" = Y ]
+}
+
+ds_devtmpfs_active() {
+    [ "$(cat "$DS_DEVTMPFS_SYS/parameters/ready" 2>/dev/null)" = Y ] &&
+    [ "$(cat "$DS_DEVTMPFS_SYS/parameters/errors" 2>/dev/null)" = 0 ]
+}
+
+ds_devtmpfs_load() {
+    DS_DEVTMPFS_STATE=''
+    if ds_devtmpfs_active; then
+        printf 'devtmpfs: already active\n'
+        return 0
+    fi
+    if [ -d "$DS_DEVTMPFS_SYS" ]; then
+        DS_DEVTMPFS_STATE="devtmpfs 已加载但状态异常（ready/errors），请重启后重试。"
+        return 1
+    fi
+    if [ ! -x "$DS_KSUD" ]; then
+        DS_DEVTMPFS_STATE='找不到可执行的 ksud。'
+        return 1
+    fi
+    printf 'Loading droidspaces_devtmpfs515.ko\n'
+    "$DS_KSUD" insmod "$MODDIR/kernel/droidspaces_devtmpfs515.ko"
+    ds_result=$?
+    if [ "$ds_result" -ne 0 ]; then
+        DS_DEVTMPFS_STATE="devtmpfs 加载返回 $ds_result。"
+        return 1
+    fi
+    if ! ds_devtmpfs_active; then
+        DS_DEVTMPFS_STATE="devtmpfs 加载后 ready/errors 异常：$(cat "$DS_DEVTMPFS_SYS/parameters/ready" 2>/dev/null)/$(cat "$DS_DEVTMPFS_SYS/parameters/errors" 2>/dev/null)。"
+        return 1
+    fi
+    printf 'devtmpfs: activated\n'
+    return 0
 }
 
 ds_net515_load() {
@@ -162,11 +198,12 @@ ds_load() {
     fi
     if ds_net515_load; then ds_net_ok=1; else ds_net_ok=0; fi
     if ds_ipset_load; then ds_ipset_ok=1; else ds_ipset_ok=0; fi
-    if [ "$ds_net_ok" = 1 ] && [ "$ds_ipset_ok" = 1 ]; then
+    if ds_devtmpfs_load; then ds_dev_ok=1; else ds_dev_ok=0; fi
+    if [ "$ds_net_ok" = 1 ] && [ "$ds_ipset_ok" = 1 ] && [ "$ds_dev_ok" = 1 ]; then
         if [ -n "$ds_ns_new" ]; then
-            ds_status '[已加载] PID / IPC namespace 与网络扩展（MACVLAN / IPv6 NAT / addrtype / ipset）已激活。'
+            ds_status '[已加载] PID / IPC、网络扩展（MACVLAN / IPv6 NAT / addrtype / ipset）与 devtmpfs 已激活。'
         else
-            ds_status '[已加载] PID / IPC namespace 与网络扩展（MACVLAN / IPv6 NAT / addrtype / ipset）已激活；更换模块需重启。'
+            ds_status '[已加载] PID / IPC、网络扩展（MACVLAN / IPv6 NAT / addrtype / ipset）与 devtmpfs 已激活；更换模块需重启。'
         fi
         return 0
     fi
@@ -174,6 +211,9 @@ ds_load() {
     [ "$ds_net_ok" = 1 ] || ds_reason="$DS_EXTRA_STATE"
     if [ "$ds_ipset_ok" = 0 ]; then
         ds_reason="${ds_reason:+$ds_reason }$DS_IPSET_STATE"
+    fi
+    if [ "$ds_dev_ok" = 0 ]; then
+        ds_reason="${ds_reason:+$ds_reason }$DS_DEVTMPFS_STATE"
     fi
     if [ -n "$ds_ns_new" ]; then
         ds_status "[部分加载] PID / IPC namespace 已激活；$ds_reason"

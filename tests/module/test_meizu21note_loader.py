@@ -25,7 +25,8 @@ class MeizuLoaderTests(unittest.TestCase):
         shutil.copytree(ROOT / 'kernelsu-meizu21note', self.module)
         kernel = self.module / 'kernel'
         kernel.mkdir()
-        self.payloads = ['droidspaces_ns.ko', 'droidspaces_net515.ko'] + [
+        self.payloads = ['droidspaces_ns.ko', 'droidspaces_net515.ko',
+                         'droidspaces_devtmpfs515.ko'] + [
             name + '.ko' for name in IPSET_MODULES]
         for name in self.payloads:
             (kernel / name).write_bytes(f'fake {name}'.encode())
@@ -43,6 +44,7 @@ ko=$2
 printf '%s\\n' "$*" >> "$FAKE_ROOT/insmod-calls"
 case "$ko:$FAKE_MODE" in
     */droidspaces_ns.ko:error|*/droidspaces_net515.ko:net515_error) exit 17 ;;
+    */droidspaces_devtmpfs515.ko:devtmpfs_error) exit 19 ;;
 esac
 case "$ko" in
     */droidspaces_ns.ko)
@@ -66,6 +68,16 @@ case "$ko" in
             silent_ipset:*) exit 0 ;;
         esac
         mkdir -p "$FAKE_ROOT/modules/$name"
+        ;;
+    */droidspaces_devtmpfs515.ko)
+        mkdir -p "$FAKE_DEV/sys/parameters"
+        if [ "$FAKE_MODE" = devtmpfs_inactive ]; then
+            printf 'N\\n' > "$FAKE_DEV/sys/parameters/ready"
+            printf '3\\n' > "$FAKE_DEV/sys/parameters/errors"
+        else
+            printf 'Y\\n' > "$FAKE_DEV/sys/parameters/ready"
+            printf '0\\n' > "$FAKE_DEV/sys/parameters/errors"
+        fi
         ;;
 esac
 exit 0
@@ -95,6 +107,7 @@ DS_MODULE_SYS=$FAKE_NS/sys
 DS_NET515_SYS=$FAKE_NET/sys
 DS_PROC_NS=$FAKE_ROOT/procns
 DS_MODULE_ROOT=$FAKE_ROOT/modules
+DS_DEVTMPFS_SYS=$FAKE_DEV/sys
 uname() {
     case "$1" in
         -m) printf 'aarch64\\n';;
@@ -108,6 +121,7 @@ ds_load
                                 env={**os.environ, 'FAKE_ROOT': str(self.root),
                                      'FAKE_NS': str(self.root / 'ns'),
                                      'FAKE_NET': str(self.root / 'net'),
+                                     'FAKE_DEV': str(self.root / 'dev'),
                                      'FAKE_MODE': mode, 'FAKE_RELEASE': release})
         self.status = (self.module / 'status.txt').read_text()
         return result
@@ -122,19 +136,20 @@ ds_load
         self.assertIn('[已加载]', self.status)
         self.assertIn('MACVLAN', self.status)
         calls = self.insmod_calls()
-        self.assertEqual(len(calls), 2 + len(IPSET_MODULES))
+        self.assertEqual(len(calls), 3 + len(IPSET_MODULES))
         self.assertIn('droidspaces_ns.ko gki=1 activate=1', calls[0])
         self.assertIn('droidspaces_net515.ko', calls[1])
         loaded = [c.split('/kernel/')[-1].split('.ko')[0] for c in calls[2:]]
-        self.assertEqual(loaded, IPSET_MODULES)
+        self.assertEqual(loaded[:len(IPSET_MODULES)], IPSET_MODULES)
         self.assertEqual(loaded[0], 'droidspaces_ip_set')
-        self.assertEqual(loaded[-1], 'droidspaces_xt_set')
+        self.assertEqual(loaded[len(IPSET_MODULES) - 1], 'droidspaces_xt_set')
+        self.assertEqual(loaded[-1], 'droidspaces_devtmpfs515')
         self.assertEqual(self.status, (self.root / 'description').read_text())
 
     def test_repeat_is_idempotent(self):
         self.assertEqual(self.run_loader().returncode, 0)
         self.assertEqual(self.run_loader().returncode, 0)
-        self.assertEqual(len(self.insmod_calls()), 2 + len(IPSET_MODULES))
+        self.assertEqual(len(self.insmod_calls()), 3 + len(IPSET_MODULES))
         self.assertIn('[已加载]', self.status)
 
     def test_net515_failure_is_partial(self):
@@ -174,6 +189,18 @@ ds_load
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('[部分加载]', self.status)
         self.assertIn('droidspaces_ip_set_hash_net', self.status)
+
+    def test_devtmpfs_failure_is_partial(self):
+        result = self.run_loader(mode='devtmpfs_inactive')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('[部分加载]', self.status)
+        self.assertIn('ready/errors', self.status)
+
+    def test_devtmpfs_insmod_error_is_partial(self):
+        result = self.run_loader(mode='devtmpfs_error')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('[部分加载]', self.status)
+        self.assertIn('devtmpfs 加载返回 19', self.status)
 
     def test_wrong_kernel_rejected(self):
         result = self.run_loader(release='5.15.100-android13-0-g123')

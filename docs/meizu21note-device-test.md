@@ -35,14 +35,15 @@ pivot_root、/proc、/sys、Seccomp —— All required features found!
 
 | 缺失项 | 原因 |
 | --- | --- |
-| devtmpfs | 5.15 移植不含 devtmpfs 载荷，Droidspaces 回退 tmpfs |
+| devtmpfs | v0.2.3 前不含 devtmpfs 载荷；v0.2.4 起由 `droidspaces_devtmpfs515.ko` 提供，见 [devtmpfs 移植](meizu21note-devtmpfs.md) |
 | Sandboxing (user namespaces) | 5.15 移植不含 user namespace |
 | CPU / Process limit | 内核编译选项 `CONFIG_CFS_BANDWIDTH` / `CONFIG_CGROUP_PIDS` 未设置，非模块范围 |
 | Macvlan、IPv6 NAT | 内核未启用 `CONFIG_MACVLAN` / `CONFIG_IP6_NF_NAT`；v0.2.2 起由 `droidspaces_net515.ko` 提供，见 [扩展说明](meizu21note-net-extras.md) |
 
-上述结果来自 v0.2.1-m21n1（仅 namespace 模块）。v0.2.2-m21n2 增加
-`droidspaces_net515.ko` 后，Macvlan 与 IPv6 NAT 两项预计由 `net515` 模块补齐，
-待真机验证；devtmpfs 与 Sandboxing 仍是 5.15 移植未覆盖的部分。
+上述结果来自 v0.2.1-m21n1（仅 namespace 模块）。2026-10-25 的真机检查已确认
+v0.2.3 中 Macvlan 与 IPv6 NAT 变为可用（`droidspaces_net515.ko` 生效）。
+v0.2.4 增加 `droidspaces_devtmpfs515.ko`，devtmpfs 一项待真机确认；
+Sandboxing（user namespace）仍未覆盖。
 
 ## 容器内功能验证
 

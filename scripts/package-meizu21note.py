@@ -131,6 +131,7 @@ def check_vendor_layouts(label, module_btf, device_btf, sources):
 
 NET515_OUT = ROOT / 'out/gki/android13-5.15-net515'
 IPSET_OUT = ROOT / 'out/gki/android13-5.15-ipset515'
+DEVTMPFS_OUT = ROOT / 'out/gki/android13-5.15-devtmpfs515'
 IPSET_MANIFEST = json.loads((ROOT/'src/ipset515/modules.json').read_text())
 
 
@@ -204,10 +205,39 @@ def audit_ipset():
                 core_exports=sorted(provided), modules=modules)
 
 
+def audit_devtmpfs():
+    device_btf = ROOT/'vmlinux'
+    symbols_path = ROOT/'kallsyms'
+    for path in (device_btf, symbols_path):
+        require(path.is_file(), f'missing required local device input: {path.name}')
+    require(sha(device_btf.read_bytes()) == BTF_SHA, 'device BTF fingerprint differs')
+    ko = (DEVTMPFS_OUT/'droidspaces_devtmpfs515.ko').read_bytes()
+    require(ko[:6] == b'\x7fELF\x02\x01', 'devtmpfs module is not ELF64 little-endian')
+    require(b'parmtype=ready:bool' in ko and b'parmtype=errors:uint' in ko,
+            'devtmpfs module is missing the ready / errors parameters')
+    build = json.loads((DEVTMPFS_OUT/'build.json').read_text())
+    require(build.get('module') == 'devtmpfs515', 'unexpected devtmpfs GitHub build module')
+    require(build['module_sha256'] == sha(ko), 'devtmpfs module differs from recorded GitHub build')
+    audit = json.loads((DEVTMPFS_OUT/'devtmpfs515.audit.json').read_text())
+    require(audit['module_sha256'] == sha(ko), 'devtmpfs audit belongs to another module')
+    layouts = check_vendor_layouts('devtmpfs515', DEVTMPFS_OUT/'module.btf', device_btf,
+                                   source_text('src/devtmpfs515'))
+    imports = {line.split()[-1] for line in
+               (DEVTMPFS_OUT/'imports.txt').read_text().splitlines() if line.strip()}
+    symbols = {line.split()[2] for line in symbols_path.read_text().splitlines()
+               if len(line.split()) >= 3}
+    require(imports <= symbols, f'unresolved device symbols: {sorted(imports-symbols)}')
+    return dict(device_release=RELEASE, device_btf_sha256=BTF_SHA, module_sha256=sha(ko),
+                imports=len(imports), resolved_imports=len(imports),
+                matching_aggregates=layouts['matching_aggregates'],
+                expected_layout_differences=layouts['differences'])
+
+
 def package(output):
     report = audit_device()
     net515_report = audit_net515()
     ipset_report = audit_ipset()
+    devtmpfs_report = audit_devtmpfs()
     ko = (OUT/'droidspaces_ns.ko').read_bytes()
     net515_ko = (NET515_OUT/'droidspaces_net515.ko').read_bytes()
     require(ko[:6] == b'\x7fELF\x02\x01', 'module is not ELF64 little-endian')
@@ -225,6 +255,8 @@ def package(output):
     for module in IPSET_MANIFEST['modules']:
         files['kernel/' + module['name'] + '.ko'] = (IPSET_OUT/(module['name'] + '.ko')).read_bytes()
     files['kernel/ipset-target.json'] = (json.dumps(ipset_report, indent=2, ensure_ascii=False)+'\n').encode()
+    files['kernel/droidspaces_devtmpfs515.ko'] = (DEVTMPFS_OUT/'droidspaces_devtmpfs515.ko').read_bytes()
+    files['kernel/devtmpfs-target.json'] = (json.dumps(devtmpfs_report, indent=2, ensure_ascii=False)+'\n').encode()
     files['kernel/SHA256SUMS'] = ''.join(
         f'{sha(data)}  {name.removeprefix("kernel/")}\n'
         for name, data in sorted(files.items()) if name.startswith('kernel/')).encode()
@@ -236,7 +268,8 @@ def package(output):
         'ABI comparison evidence is in kernel/target.json and kernel/net515-target.json.\n'
         'droidspaces_ns.ko supplies PID / IPC namespaces; droidspaces_net515.ko supplies\n'
         'the MACVLAN link kind, the IPv6 xtables nat table and xt_addrtype;\n'
-        'droidspaces_ip_set*.ko and droidspaces_xt_set.ko supply ipset.\n'
+        'droidspaces_ip_set*.ko and droidspaces_xt_set.ko supply ipset;\n'
+        'droidspaces_devtmpfs515.ko supplies a late-loaded devtmpfs.\n'
     ).encode()
     files['SHA256SUMS'] = ''.join(f'{sha(data)}  {name}\n' for name, data in sorted(files.items())
                                  if name.startswith('kernel/')).encode()

@@ -15,6 +15,8 @@ MODULES = {
                'extra_sources': ('src/net515',)},
     'ipset515': {'target': 'ipset515', 'ko': 'droidspaces_ip_set.ko', 'suffix': '-ipset515',
                  'extra_sources': ('src/ipset515',)},
+    'devtmpfs515': {'target': 'devtmpfs515', 'ko': 'droidspaces_devtmpfs515.ko',
+                    'suffix': '-devtmpfs515', 'extra_sources': ('src/devtmpfs515',)},
 }
 
 
