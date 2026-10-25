@@ -54,10 +54,13 @@ done
 
     symbols = {line.split()[-1] for line in (out/'symbols.txt').read_text().splitlines()
                if len(line.split()) >= 3}
+    def names(path):
+        return {line.split()[-1] for line in path.read_text().splitlines() if line.strip()}
+
     provided = set()
     for module in MANIFEST['modules']:
-        provided |= set((out/(module['name'] + '.exports.txt')).read_text().split())
-    core_exports = set((out/(MANIFEST['core'] + '.exports.txt')).read_text().split())
+        provided |= names(out/(module['name'] + '.exports.txt'))
+    core_exports = names(out/(MANIFEST['core'] + '.exports.txt'))
 
     report = {'target': 'android13-5.15',
               'kernel_btf_sha256': sha(out/'kernel.btf'),
@@ -68,7 +71,7 @@ done
         if layouts['differences']:
             raise SystemExit(f'{base}: incompatible host layouts: '
                              f'{json.dumps(layouts["differences"], indent=2)}')
-        imports = set((out/(base + '.imports.txt')).read_text().split())
+        imports = names(out/(base + '.imports.txt'))
         internal = imports & provided
         unresolved = (imports - provided) - symbols
         if unresolved:
