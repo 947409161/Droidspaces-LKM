@@ -63,4 +63,4 @@ if __name__ == '__main__':
     built = {p.stem: hashlib.sha256(p.read_bytes()).hexdigest()
              for p in sorted(out.glob('*.ko'))}
     record.write_text(json.dumps(dict(target=target, module=args.module, sources=before,
-        module_sha256=built[module['ko']], modules=built), indent=2)+'\n')
+        module_sha256=built[Path(module['ko']).stem], modules=built), indent=2)+'\n')
