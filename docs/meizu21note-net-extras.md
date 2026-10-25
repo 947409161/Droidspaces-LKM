@@ -80,14 +80,16 @@ IPv6 `nat` 表与原生模块一样注册为空模板。
   不定义 `CONFIG_BRIDGE_NETFILTER`，因为设备也没启用，`hash:netiface` 因而编译成
   非 bridge 变体，与宿主行为一致。
 - 内核在 `insmod` 时解析模块间符号，所以加载顺序固定为：核心 → 16 种 set 类型 →
-  `xt_set`。`droidspaces_ip_set` 导出 26 个核心符号，类型模块依赖其中一部分；
+  `xt_set`。`droidspaces_ip_set` 导出 set 操作与工具符号（参考实现中为 26 个），
+  类型模块依赖其中一部分；
   审计脚本会用 `__ksymtab` 精确核对“模块间导入”和“内核导入”，不存在靠猜测的地方。
 - 不附带用户态 `ipset` 程序：容器内安装发行版的 ipset 包即可（Debian 为 `ipset`），
   它通过 nfnetlink 直接与内核模块通信，不需要宿主端二进制。
 
 已验证的静态条件：设备 `CONFIG_IP_SET=n`，但 ipset 核心所需的 nfnetlink、
 `nf_register_sockopt`、netlink 与内存分配符号全部存在；第三方 IPSET_LKM v2.5 的
-android13-5.15 包用同一批 5.15.202 源码构建，其 `ip_set.ko` 与本设备符号完全对得上。
+android13-5.15 包基于同样的 5.15.202 基线（vermagic 相同），其 `ip_set.ko` 的
+导入符号与本设备完全对得上。
 
 真机验证（root shell）：
 
