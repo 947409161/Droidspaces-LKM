@@ -68,6 +68,10 @@ droidspaces check   # devtmpfs 一项应变为可用
 
 ## 状态
 
-源码与本地测试已完成（`tests/module/test_devtmpfs515_sources.py`、
-`tests/module/test_meizu21note_loader.py`）。CI 构建与审计尚未运行，真机加载
-未验证；在 CI 通过并完成真机检查前，不宣称 devtmpfs 可用。
+2026-10-25 已在 GitHub Actions（run 40177380401）用固定 DDK 构建并通过审计：
+模块 BTF 与 DDK 内核 BTF 布局完全一致，导入符号全部解析。用本设备 BTF 与
+`kallsyms` 复核后打包，导入符号全部存在；设备侧结构差异只有已记录的厂商
+增量（`perf_event`、`net_device`、`netns_ipv4`、`ipv6_devconf`、`prefix_info`），
+大小不变且源码不引用差异字段。v0.2.4 Release 已发布。
+
+真机加载与功能验证仍未完成；在完成上文检查前，不宣称 devtmpfs 可用。
