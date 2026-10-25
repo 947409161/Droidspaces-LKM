@@ -42,7 +42,7 @@ if __name__ == '__main__':
     if not (source / 'main.c').is_file():
         parser.error(f'missing independent source set: {source}')
     for name in module['extra_sources']:
-        if not (ROOT / name / 'main.c').is_file():
+        if not (ROOT / name).is_dir():
             parser.error(f'missing independent source set: {ROOT / name}')
     out = ROOT/'out/gki'/(target['kmi'] + module['suffix'])
     cmd = ['docker', 'run', '--rm', '--platform', 'linux/amd64',
